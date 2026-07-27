@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/brand/kindred-logo.png" alt="Kindred" width="360" />
+</p>
+
 # Kindred
 
 **Never let a loyal fan become a forgotten fan.**
