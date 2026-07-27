@@ -1,0 +1,16 @@
+{
+  "name": "kindred",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kindred — persistent AI relationship memory for creators.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "workspaces:list": "npm ls --workspaces --depth=0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
