@@ -211,6 +211,33 @@ model Insight {
   community Community @relation(fields: [communityId], references: [id])
   member    Member?   @relation(fields: [memberId], references: [id])
 
+  notifications Notification[]
+
   @@index([communityId, createdAt])
+}
+
+enum NotificationChannel {
+  dashboard
+  telegram_dm
+  email
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+}
+
+model Notification {
+  id          String              @id @default(uuid())
+  insightId   String
+  channel     NotificationChannel
+  status      NotificationStatus  @default(pending)
+  deliveredAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  insight Insight @relation(fields: [insightId], references: [id])
+
+  @@index([insightId])
 }
 
