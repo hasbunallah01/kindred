@@ -1,0 +1,19 @@
+{
+  "name": "@kindred/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Prisma schema and generated client for Kindred — used by both apps/web and apps/agent so both agree on one data model.",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "studio": "prisma studio"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "prisma": "^7.9.1",
+    "typescript": "^5.7.0"
+  }
+}
