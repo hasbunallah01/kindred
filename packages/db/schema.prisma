@@ -42,6 +42,8 @@ model User {
 
   communities Community[]
 
+  notificationPreference NotificationPreference?
+
   @@unique([email])
   @@map("user")
 }
@@ -239,5 +241,17 @@ model Notification {
   insight Insight @relation(fields: [insightId], references: [id])
 
   @@index([insightId])
+}
+
+model NotificationPreference {
+  id                    String    @id @default(uuid())
+  creatorId             String    @unique
+  telegramDmEnabled     Boolean   @default(true)
+  emailEnabled          Boolean   @default(false)
+  quietHoursStart       DateTime? @db.Time()
+  quietHoursEnd         DateTime? @db.Time()
+  maxDailyNotifications Int       @default(5)
+
+  creator User @relation(fields: [creatorId], references: [id])
 }
 
