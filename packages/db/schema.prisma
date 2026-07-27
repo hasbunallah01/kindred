@@ -43,6 +43,7 @@ model User {
   communities Community[]
 
   notificationPreference NotificationPreference?
+  telegramLinkRequests   TelegramLinkRequest[]
 
   @@unique([email])
   @@map("user")
@@ -251,6 +252,16 @@ model NotificationPreference {
   quietHoursStart       DateTime? @db.Time()
   quietHoursEnd         DateTime? @db.Time()
   maxDailyNotifications Int       @default(5)
+
+  creator User @relation(fields: [creatorId], references: [id])
+}
+
+model TelegramLinkRequest {
+  id          String    @id @default(uuid())
+  creatorId   String
+  code        String    @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
 
   creator User @relation(fields: [creatorId], references: [id])
 }
