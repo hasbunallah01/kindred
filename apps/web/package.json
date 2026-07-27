@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@better-auth/prisma-adapter": "^1.6.25",
+    "@kindred/db": "*",
+    "better-auth": "^1.6.25",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
