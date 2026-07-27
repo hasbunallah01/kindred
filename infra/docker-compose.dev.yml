@@ -1,0 +1,45 @@
+# Local development infrastructure only.
+# Not used in production — Neon (Postgres) and a managed/VPS Redis are used
+# there instead (see Blueprint Section 12).
+#
+# Usage:
+#   docker compose -f infra/docker-compose.dev.yml up -d
+#   docker compose -f infra/docker-compose.dev.yml down
+#   docker compose -f infra/docker-compose.dev.yml down -v   # also wipes data volumes
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kindred-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kindred
+      POSTGRES_PASSWORD: kindred
+      POSTGRES_DB: kindred
+    ports:
+      - '5432:5432'
+    volumes:
+      - kindred-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kindred -d kindred']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: kindred-dev-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - kindred-redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kindred-postgres-data:
+  kindred-redis-data:
