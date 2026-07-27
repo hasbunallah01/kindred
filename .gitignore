@@ -40,8 +40,9 @@ lerna-debug.log*
 *.swo
 Thumbs.db
 
-# Prisma (scaffolded in Checkpoint 5)
-prisma/migrations/dev.db*
+# Prisma — generated client is regenerable, never commit it.
+# Migration files (packages/db/migrations/) ARE committed — real history, not build output.
+packages/db/generated/
 
-# Docker (scaffolded in Checkpoint 6)
+# Docker (local dev only — see infra/docker-compose.dev.yml)
 .docker/

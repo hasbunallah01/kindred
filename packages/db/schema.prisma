@@ -1,0 +1,18 @@
+// Kindred — shared Prisma schema.
+//
+// This file holds only the datasource and generator blocks for now.
+// Models are added starting in Build Plan Checkpoint 8 (Better Auth
+// models) and Checkpoints 9-15 (Kindred domain models), per Blueprint
+// Section 3.
+//
+// Note: as of Prisma 7, the datasource block no longer holds the
+// connection string — that lives in ./prisma.config.ts instead.
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated/client"
+}
