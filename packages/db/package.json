@@ -4,10 +4,16 @@
   "private": true,
   "type": "module",
   "description": "Shared Prisma schema and generated client for Kindred — used by both apps/web and apps/agent so both agree on one data model.",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
   "scripts": {
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
-    "studio": "prisma studio"
+    "studio": "prisma studio",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "dotenv": "^16.4.7"
