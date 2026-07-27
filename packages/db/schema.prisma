@@ -40,6 +40,8 @@ model User {
   sessions Session[]
   accounts Account[]
 
+  communities Community[]
+
   @@unique([email])
   @@map("user")
 }
@@ -90,5 +92,29 @@ model Verification {
   updatedAt  DateTime
 
   @@map("verification")
+}
+
+// ---------------------------------------------------------------------------
+// Kindred domain models (Build Plan Checkpoints 9-15, Blueprint Section 3.2).
+// ---------------------------------------------------------------------------
+
+enum CommunityStatus {
+  pending_link
+  active
+  disconnected
+}
+
+model Community {
+  id                   String          @id @default(uuid())
+  creatorId            String
+  telegramChatId       BigInt          @unique
+  telegramChatTitle    String
+  mindsConversationId  String?         @unique
+  privacyModeConfirmed Boolean         @default(false)
+  status               CommunityStatus @default(pending_link)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  creator User @relation(fields: [creatorId], references: [id])
 }
 
