@@ -2,15 +2,26 @@
   "name": "kindred",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Kindred — persistent AI relationship memory for creators.",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.base.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "workspaces:list": "npm ls --workspaces --depth=0"
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3"
   }
 }
