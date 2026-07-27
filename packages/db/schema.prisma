@@ -118,6 +118,7 @@ model Community {
   creator User @relation(fields: [creatorId], references: [id])
 
   members Member[]
+  insights Insight[]
 }
 
 enum MemberStatus {
@@ -142,6 +143,7 @@ model Member {
   community Community @relation(fields: [communityId], references: [id])
 
   relationshipEvents RelationshipEvent[]
+  insights           Insight[]
 
   @@unique([communityId, telegramUserId])
   @@index([communityId, status])
@@ -184,5 +186,31 @@ model RelationshipEvent {
   // before applying) — deferred to when Checkpoint 43 is implemented and
   // migrations can actually run against a reachable database/engine.
   @@index([sentToMind])
+}
+
+enum InsightSource {
+  reactive
+  autonomous
+}
+
+enum InsightStatus {
+  unread
+  read
+  acted
+}
+
+model Insight {
+  id          String        @id @default(uuid())
+  communityId String
+  memberId    String?
+  source      InsightSource
+  content     String
+  status      InsightStatus @default(unread)
+  createdAt   DateTime      @default(now())
+
+  community Community @relation(fields: [communityId], references: [id])
+  member    Member?   @relation(fields: [memberId], references: [id])
+
+  @@index([communityId, createdAt])
 }
 
