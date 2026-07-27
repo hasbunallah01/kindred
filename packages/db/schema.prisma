@@ -116,5 +116,32 @@ model Community {
   updatedAt            DateTime        @updatedAt
 
   creator User @relation(fields: [creatorId], references: [id])
+
+  members Member[]
+}
+
+enum MemberStatus {
+  active
+  quiet
+  inactive
+  returned
+}
+
+model Member {
+  id               String       @id @default(uuid())
+  communityId      String
+  telegramUserId   BigInt
+  telegramUsername String?
+  displayName      String
+  firstSeenAt      DateTime
+  lastSeenAt       DateTime
+  status           MemberStatus @default(active)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id])
+
+  @@unique([communityId, telegramUserId])
+  @@index([communityId, status])
 }
 
