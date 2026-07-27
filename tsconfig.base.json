@@ -24,6 +24,6 @@
     "incremental": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "apps/**/*.ts", "packages/**/*.ts", "infra/**/*.ts"],
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "infra/**/*.ts"],
   "exclude": ["node_modules", "dist", ".next", "build"]
 }
