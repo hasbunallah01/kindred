@@ -1,9 +1,11 @@
 // Root ESLint configuration (flat config).
 // Shared by every workspace that extends the root setup.
-// Framework-specific plugins (Next.js, Node) are added by individual packages
-// when they are scaffolded in later checkpoints; this base stays framework-agnostic.
+// Framework-specific plugins (Next.js) are added by individual packages
+// when needed; this base stays framework-agnostic and works for both
+// apps/web (browser) and apps/agent (Node).
 
 import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
 
 export default [
   {
@@ -17,6 +19,7 @@ export default [
     ],
   },
   js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     files: ['**/*.{js,mjs,cjs,ts,mts,cts,tsx,jsx}'],
     languageOptions: {
@@ -24,7 +27,8 @@ export default [
       sourceType: 'module',
       globals: {
         // Node.js globals (the agent runtime is Node).
-        // Web app-specific globals (window, document) are added by apps/web when scaffolded.
+        // Web app-specific globals (window, document) are added by apps/web
+        // when scaffolded.
         console: 'readonly',
         process: 'readonly',
         Buffer: 'readonly',
@@ -45,7 +49,8 @@ export default [
       },
     },
     rules: {
-      'no-unused-vars': 'off', // TS handles this; rules below are the source of truth
+      // TS handles these; the TS plugin's rules are the source of truth.
+      'no-unused-vars': 'off',
     },
   },
 ];
