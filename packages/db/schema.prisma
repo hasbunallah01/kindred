@@ -141,7 +141,48 @@ model Member {
 
   community Community @relation(fields: [communityId], references: [id])
 
+  relationshipEvents RelationshipEvent[]
+
   @@unique([communityId, telegramUserId])
   @@index([communityId, status])
+}
+
+enum RelationshipEventType {
+  joined
+  first_interaction
+  participation
+  creator_interaction
+  milestone
+  absence_started
+  returned
+  contribution
+  appreciation
+}
+
+model RelationshipEvent {
+  id           String                @id @default(uuid())
+  memberId     String
+  type         RelationshipEventType
+  payload      Json
+  occurredAt   DateTime
+  sentToMind   Boolean               @default(false)
+  sentToMindAt DateTime?
+  createdAt    DateTime              @default(now())
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([memberId, occurredAt])
+  // NOTE: the Blueprint calls for a *partial* index on (sentToMind = false)
+  // so the digest-sender worker (Build Plan Checkpoint 43) can scan only
+  // unbatched events cheaply. Prisma's schema DSL does not support WHERE-
+  // clause partial indexes declaratively (confirmed: no @@index filter
+  // syntax exists in Prisma 7). A plain index on sentToMind is the closest
+  // schema-representable approximation for now; the true partial index
+  // requires hand-editing the generated migration's raw SQL
+  // (`prisma migrate dev --create-only`, then add
+  // `CREATE INDEX ... ON "RelationshipEvent" (sentToMind) WHERE NOT sentToMind;`
+  // before applying) — deferred to when Checkpoint 43 is implemented and
+  // migrations can actually run against a reachable database/engine.
+  @@index([sentToMind])
 }
 
