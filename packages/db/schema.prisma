@@ -1,9 +1,8 @@
 // Kindred — shared Prisma schema.
 //
-// This file holds only the datasource and generator blocks for now.
-// Models are added starting in Build Plan Checkpoint 8 (Better Auth
-// models) and Checkpoints 9-15 (Kindred domain models), per Blueprint
-// Section 3.
+// Models are added incrementally per the Build Plan: Better Auth's four
+// required models (Checkpoint 8), then Kindred's own domain models
+// (Checkpoints 9-15), per Blueprint Section 3.
 //
 // Note: as of Prisma 7, the datasource block no longer holds the
 // connection string — that lives in ./prisma.config.ts instead.
@@ -16,3 +15,80 @@ generator client {
   provider = "prisma-client"
   output   = "./generated/client"
 }
+
+// ---------------------------------------------------------------------------
+// Better Auth — required core schema (Build Plan Checkpoint 8).
+//
+// Field names, types, and nullability match the official Better Auth core
+// schema exactly: https://www.better-auth.com/docs/concepts/database
+// Table names are mapped to Better Auth's lowercase defaults via @@map so
+// the Prisma adapter finds them without extra configuration. No @default(...)
+// is set on `id` fields — Better Auth's Prisma adapter generates and supplies
+// IDs itself at write time (confirmed against Prisma's own official Better
+// Auth + Prisma integration guide).
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  sessions Session[]
+  accounts Account[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  token     String
+  userId    String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime
+  updatedAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime
+  updatedAt  DateTime
+
+  @@map("verification")
+}
+
