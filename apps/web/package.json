@@ -16,7 +16,8 @@
     "better-auth": "^1.6.25",
     "next": "^15.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "resend": "^6.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
