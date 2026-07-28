@@ -17,6 +17,10 @@ import {
   milestoneScannerWorker,
   scheduleMilestoneScanner,
 } from './workers/milestone-scanner.worker';
+import {
+  linkingCodeExpiryWorker,
+  scheduleLinkingCodeExpiry,
+} from './workers/linking-code-expiry.worker';
 import { startMindsInsightListener } from './minds/sse-listener';
 
 async function main(): Promise<void> {
@@ -31,6 +35,9 @@ async function main(): Promise<void> {
 
   await scheduleMilestoneScanner();
   console.log(`milestone-scanner worker listening (queue: ${milestoneScannerWorker.name})`);
+
+  await scheduleLinkingCodeExpiry();
+  console.log(`linking-code-expiry worker listening (queue: ${linkingCodeExpiryWorker.name})`);
 
   startMindsInsightListener();
   console.log('Minds SSE insight listener started.');
