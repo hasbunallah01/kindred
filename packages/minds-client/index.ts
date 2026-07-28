@@ -87,6 +87,23 @@ export async function sendMessage(alias: string, content: string): Promise<Minds
   return (await response.json()) as MindsMessage;
 }
 
+// Checkpoint 45: the documented API surface (CreateConversation,
+// GetConversation, GetMessageHistory, ListConversations, SendMessage,
+// SubscribeEvents — the same 6 tools confirmed at Checkpoint 41) has no
+// dedicated "set standing instructions" endpoint. Per the Build Plan's
+// own documented fallback for this exact case, standing instructions are
+// established via an initial SendMessage carrying the directive as plain
+// text, rather than a first-class API concept.
+export const STANDING_INSTRUCTIONS =
+  'Watch for members who were consistently active and have gone unusually ' +
+  'quiet. When this happens, tell me who they are and why they mattered. ' +
+  'Also tell me when someone returns after an absence, and flag meaningful ' +
+  'upcoming anniversaries.';
+
+export async function setStandingInstructions(alias: string): Promise<MindsMessage> {
+  return sendMessage(alias, STANDING_INSTRUCTIONS);
+}
+
 export interface MessageHistoryPage {
   messages: MindsMessage[];
   // "fingerprint" per the documented pagination mechanism — a forward-only
