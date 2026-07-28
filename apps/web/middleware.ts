@@ -30,20 +30,17 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // TEMPORARY DIAGNOSTIC (to be reverted): matcher set to a path that
-  // never matches anything real, so middleware still builds and deploys
-  // but is never invoked for any actual request. The first version of
-  // this diagnostic used an empty array (matcher: []) — that build
-  // FAILED outright, a different and more informative failure than the
-  // 404 it was meant to test. Since matcher: [] is the only thing that
-  // changed between "builds fine, 404s at runtime" and "fails to build
-  // at all," an empty matcher array is very likely invalid or mishandled
-  // specifically at Vercel's build/deployment step (Next.js's own local
-  // tooling tolerates it; Vercel's Edge Function manifest generation
-  // apparently does not). Using a real, non-empty (but never-matching)
-  // pattern avoids that failure mode while preserving the same
-  // diagnostic intent: isolate whether middleware invocation itself
-  // (under runtime: 'nodejs') is what broke routing on all three domains.
+  // Diagnostic conclusion (see prior two commits): middleware invocation
+  // itself was ruled out as the cause of the platform-wide 404 on all
+  // three domains — the 404 persisted identically even with matcher set
+  // to a path that never matches any real route, meaning middleware was
+  // never actually running. Reverted to the correct, intended matcher.
+  // getSessionCookie() pulls in better-auth's cookie/JWT internals (via
+  // the jose library), which use Node.js-only APIs (DecompressionStream,
+  // crypto) that the default Edge Runtime doesn't support — confirmed via
+  // an earlier real Vercel deployment failure. Node.js middleware runtime
+  // has been stable since Next.js 15.5 (no experimental flag required) —
+  // this project resolves to 15.5.22, well past that.
   runtime: 'nodejs',
-  matcher: ['/__diagnostic_never_matches__'],
+  matcher: ['/dashboard/:path*', '/onboarding/:path*'],
 };
