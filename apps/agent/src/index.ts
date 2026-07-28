@@ -13,6 +13,10 @@ import {
   mindStandingCheckWorker,
   scheduleMindStandingCheck,
 } from './workers/mind-standing-check.worker';
+import {
+  milestoneScannerWorker,
+  scheduleMilestoneScanner,
+} from './workers/milestone-scanner.worker';
 import { startMindsInsightListener } from './minds/sse-listener';
 
 async function main(): Promise<void> {
@@ -24,6 +28,9 @@ async function main(): Promise<void> {
 
   await scheduleMindStandingCheck();
   console.log(`mind-standing-check worker listening (queue: ${mindStandingCheckWorker.name})`);
+
+  await scheduleMilestoneScanner();
+  console.log(`milestone-scanner worker listening (queue: ${milestoneScannerWorker.name})`);
 
   startMindsInsightListener();
   console.log('Minds SSE insight listener started.');

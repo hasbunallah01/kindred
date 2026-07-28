@@ -14,6 +14,7 @@ export const QUEUE_NAMES = {
   TELEGRAM_INGEST: 'telegram-ingest',
   MIND_DIGEST_SENDER: 'mind-digest-sender',
   MIND_STANDING_CHECK: 'mind-standing-check',
+  MILESTONE_SCANNER: 'milestone-scanner',
 } as const;
 
 // The raw Telegram Update JSON is intentionally typed as `unknown` here —
