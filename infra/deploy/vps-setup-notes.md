@@ -21,8 +21,7 @@ the rest of Checkpoints 26–31 depend on.
 ## 2. Disable privacy mode (critical — do this now, not later)
 
 By default, Telegram bots only see `/commands` and @mentions in a group,
-not ordinary messages. Kindred's entire ingestion model (Blueprint Section
-5) depends on seeing ordinary conversation, so this must be turned off
+not ordinary messages. Kindred's entire ingestion model (Blueprint Section 5) depends on seeing ordinary conversation, so this must be turned off
 **before** the bot is added to any real community:
 
 1. In the BotFather chat, send `/mybots`.
@@ -35,12 +34,13 @@ configures later (Blueprint Section 5.2).
 
 ## 3. Generate the webhook secret
 
-`TELEGRAM_WEBHOOK_SECRET` is not issued by Telegram — it's a string *you*
+`TELEGRAM_WEBHOOK_SECRET` is not issued by Telegram — it's a string _you_
 generate and give to Telegram (via `setWebhook`, Checkpoint 30), which
 Telegram then echoes back on every webhook request so we can verify it's
 really them. Telegram requires it to match `^[A-Za-z0-9_-]{1,256}$`.
 
 Generate one:
+
 ```bash
 openssl rand -hex 32
 ```
@@ -50,12 +50,12 @@ openssl rand -hex 32
 Four values, ready for Vercel's Environment Variables (and your local
 `.env`, gitignored):
 
-| Variable | Source |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | BotFather's `/newbot` response |
-| `TELEGRAM_BOT_USERNAME` | The username you chose (no `@`) |
-| `TELEGRAM_WEBHOOK_SECRET` | Self-generated, step 3 above |
-| — | Privacy mode confirmed disabled (step 2) |
+| Variable                  | Source                                   |
+| ------------------------- | ---------------------------------------- |
+| `TELEGRAM_BOT_TOKEN`      | BotFather's `/newbot` response           |
+| `TELEGRAM_BOT_USERNAME`   | The username you chose (no `@`)          |
+| `TELEGRAM_WEBHOOK_SECRET` | Self-generated, step 3 above             |
+| —                         | Privacy mode confirmed disabled (step 2) |
 
 ## 5. What's still ahead (later checkpoints, not this one)
 
@@ -67,3 +67,41 @@ Four values, ready for Vercel's Environment Variables (and your local
   restriction as the `binaries.prisma.sh` limitation documented since
   Checkpoint 5). It needs to be run from your own machine or CI, once a
   real deployment is live to point it at.
+
+---
+
+## 6. Registering the webhook (Checkpoint 30)
+
+Once the app is deployed and reachable at `https://kindred.haybee.xyz`
+(confirmed via Checkpoint 29's `/api/telegram/webhook` route existing),
+run this from your own machine — a terminal with `curl`:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  -d url="https://kindred.haybee.xyz/api/telegram/webhook" \
+  -d secret_token="<TELEGRAM_WEBHOOK_SECRET>" \
+  -d drop_pending_updates=true
+```
+
+Replace both placeholders with your real values (never paste the real
+token in a shared/public place). A successful response looks like:
+
+```json
+{ "ok": true, "result": true, "description": "Webhook was set" }
+```
+
+**To verify it's actually registered** (useful for debugging later):
+
+```bash
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
+```
+
+This returns the currently-registered URL, any recent delivery errors,
+and a pending-update count — the first place to look if messages aren't
+arriving.
+
+**To confirm delivery is actually flowing**: send a plain message (not a
+command) in a group where the bot is a member (privacy mode already
+disabled per step 2), then check the webhook route's logs (Vercel →
+your project → Logs, filtered to `/api/telegram/webhook`) for a
+corresponding invocation.
