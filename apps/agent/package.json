@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@kindred/db": "*",
+    "@kindred/minds-client": "*",
     "@kindred/shared": "*",
     "bullmq": "^5.81.2",
     "ioredis": "^5.11.1"

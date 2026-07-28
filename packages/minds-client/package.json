@@ -1,0 +1,18 @@
+{
+  "name": "@kindred/minds-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared thin wrapper over the HelloMinds Messaging API — used by both apps/web (Checkpoint 49's reactive Ask Kindred flow) and apps/agent (digest sending, standing checks, SSE listening). Not placed inside apps/agent per the Blueprint's literal file tree, because apps/web needs it directly too.",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
