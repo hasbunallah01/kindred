@@ -2,7 +2,7 @@ import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { prisma } from '@kindred/db';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
-import { createConversation } from '@kindred/minds-client';
+import { createConversation, setStandingInstructions } from '@kindred/minds-client';
 import {
   extractEvents,
   detectCreatorInteractionTarget,
@@ -124,6 +124,11 @@ async function handleLinkingCode(
   // checkpoint's scope; a real retry/backfill path isn't built here.
   if (!community.mindsConversationId) {
     const { alias } = await createConversation();
+    // Checkpoint 45: established once, right here, at the same moment
+    // the conversation itself is created — every real community's Mind
+    // conversation gets standing instructions from the start, not just
+    // the "test conversation" wording in the checkpoint's own goal.
+    await setStandingInstructions(alias);
     await prisma.community.update({
       where: { id: community.id },
       data: { mindsConversationId: alias },

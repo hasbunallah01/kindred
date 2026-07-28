@@ -105,3 +105,27 @@ command) in a group where the bot is a member (privacy mode already
 disabled per step 2), then check the webhook route's logs (Vercel →
 your project → Logs, filtered to `/api/telegram/webhook`) for a
 corresponding invocation.
+
+## 7. Mind standing instructions (Checkpoint 45)
+
+Every community's Mind conversation is given a fixed standing instruction
+automatically, right when the conversation is created (see
+`apps/agent/src/workers/telegram-ingest.worker.ts`, `handleLinkingCode`):
+
+> "Watch for members who were consistently active and have gone unusually
+> quiet. When this happens, tell me who they are and why they mattered.
+> Also tell me when someone returns after an absence, and flag meaningful
+> upcoming anniversaries."
+
+This is Blueprint Section 6.2's example directive, sent via a plain
+`SendMessage` call (`setStandingInstructions` in
+`packages/minds-client/index.ts`) — the documented API surface has no
+dedicated "set standing instructions" endpoint, so this is the Build
+Plan's own specified fallback for that gap.
+
+**To verify it's actually present and durable** (once you have a real
+linked test community): call `getMessageHistory(alias)` and confirm the
+instruction text appears as the first message in the conversation, then
+call it again in a fresh process/request to confirm it's still there —
+i.e., that it's part of the Mind's persistent memory, not something that
+only existed for the lifetime of one request.
