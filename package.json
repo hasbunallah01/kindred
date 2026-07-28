@@ -9,6 +9,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "npm run generate --workspace=@kindred/db",
     "typecheck": "tsc --noEmit -p tsconfig.base.json",
     "lint": "eslint .",
     "format": "prettier --write .",
