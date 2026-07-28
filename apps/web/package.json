@@ -13,6 +13,7 @@
   "dependencies": {
     "@better-auth/prisma-adapter": "^1.6.25",
     "@kindred/db": "*",
+    "@kindred/minds-client": "*",
     "@kindred/shared": "*",
     "better-auth": "^1.6.25",
     "bullmq": "^5.81.2",
