@@ -81,24 +81,50 @@ export async function createConversation(): Promise<MindsConversation> {
   return (await response.json()) as MindsConversation;
 }
 
+// A single message in a conversation. The official Builder API returns
+// raw message records with the sender/recipient split, the body in
+// `messageText`, and a `senderType` discriminator (1 = the user, the
+// other value = the Mind). To keep call sites from having to know the
+// API's internal encoding, the client normalizes to a familiar
+// { role, content, createdAt } shape here — `role` is 'user' for the
+// human side and 'assistant' for the Mind, derived from senderType.
 export interface MindsMessage {
-  role: string;
+  role: 'user' | 'assistant';
   content: string;
   createdAt?: string;
+  // The API's per-message fingerprint. Pass it back as the `after`
+  // cursor on the next getMessageHistory call to fetch messages that
+  // came after this one — confirmed against the live API response
+  // (Checkpoint 51+).
+  fingerprint?: string;
+}
+
+// SendMessage's actual response shape (confirmed against the live
+// Builder API, Checkpoint 51+). It echoes the alias/conversationId
+// and adds the new messageId — a record of the write, not a
+// normalized MindsMessage. None of the current call sites read the
+// return value, but typing it honestly matters: if a future caller
+// expects `result.content`, an undefined-access would compile and
+// only blow up at runtime.
+export interface SendMessageResult {
+  alias: string;
+  conversationId: string;
+  messageId: string;
+  artifactIds: string[];
 }
 
 // Sends a message into the conversation identified by alias. The
 // official Builder API takes both alias and messageText in the body
 // (no conversation id in the path), so we pass alias through here
 // rather than baking it into the URL.
-export async function sendMessage(alias: string, content: string): Promise<MindsMessage> {
+export async function sendMessage(alias: string, content: string): Promise<SendMessageResult> {
   const response = await fetch(ENDPOINTS.sendMessage(), {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ alias, messageText: content }),
   });
   await assertOk(response, 'sendMessage');
-  return (await response.json()) as MindsMessage;
+  return (await response.json()) as SendMessageResult;
 }
 
 export const STANDING_INSTRUCTIONS =
@@ -107,20 +133,52 @@ export const STANDING_INSTRUCTIONS =
   'Also tell me when someone returns after an absence, and flag meaningful ' +
   'upcoming anniversaries.';
 
-export async function setStandingInstructions(alias: string): Promise<MindsMessage> {
+export async function setStandingInstructions(alias: string): Promise<SendMessageResult> {
   return sendMessage(alias, STANDING_INSTRUCTIONS);
+}
+
+// Builder API raw message record (confirmed against the live
+// Checkpoint 51 response). Not part of the public client contract —
+// kept module-local and normalized into MindsMessage before being
+// returned to callers.
+interface RawMindsMessage {
+  messageText?: string;
+  senderType?: number;
+  createdAt?: string;
+  fingerprint?: string;
 }
 
 export interface MessageHistoryPage {
   messages: MindsMessage[];
   // Forward-only cursor on the official API (the `after` query param).
-  // Undefined/absent means no further pages.
+  // Set to the last message's fingerprint when a page fills up, so the
+  // caller can pass it back to fetch what came next. Undefined/absent
+  // when the page wasn't full and there are no further messages.
   nextAfter?: string;
 }
 
+function normalizeMessage(raw: RawMindsMessage): MindsMessage {
+  return {
+    // Builder API convention (confirmed live): senderType === 1 is the
+    // human side of the conversation; anything else is the Mind. We
+    // surface a normalized role so call sites don't have to know the
+    // discriminator.
+    role: raw.senderType === 1 ? 'user' : 'assistant',
+    content: raw.messageText ?? '',
+    createdAt: raw.createdAt,
+    fingerprint: raw.fingerprint,
+  };
+}
+
 // Retrieves message history for a conversation. The official API
-// paginates with `after` (an opaque forward cursor, equivalent to the
-// earlier "fingerprint") and `limit`, not page/offset.
+// paginates with `after` (a message fingerprint from the previous
+// page's last item) and `limit`, not page/offset — confirmed against
+// the live Builder API response (Checkpoint 51+).
+//
+// The API returns a bare JSON array, not an envelope — this function
+// wraps it in { messages, nextAfter } for call-site ergonomics. The
+// `nextAfter` is set whenever a full page comes back, so a caller can
+// keep paginating until they get a short page.
 export async function getMessageHistory(
   alias: string,
   after?: string,
@@ -136,5 +194,16 @@ export async function getMessageHistory(
 
   const response = await fetch(url.toString(), { headers: authHeaders() });
   await assertOk(response, 'getMessageHistory');
-  return (await response.json()) as MessageHistoryPage;
+  const raw = (await response.json()) as RawMindsMessage[];
+
+  const messages = raw.map(normalizeMessage);
+  const last = messages[messages.length - 1];
+  // If the caller specified a limit and we got exactly that many back,
+  // assume there's more — the official API doesn't surface a
+  // hasMore/nextPageToken in its response, so a full page is the only
+  // signal we have. If no limit was set, the API returns everything
+  // and there's nothing to page through.
+  const nextAfter = limit !== undefined && messages.length === limit ? last?.fingerprint : undefined;
+
+  return { messages, nextAfter };
 }
