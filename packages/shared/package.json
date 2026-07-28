@@ -1,0 +1,18 @@
+{
+  "name": "@kindred/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-app constants and shared types for Kindred — queue names, job payload types, thresholds, enums used by both apps/web and apps/agent.",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
