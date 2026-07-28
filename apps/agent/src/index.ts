@@ -9,6 +9,10 @@ import {
   mindDigestSenderWorker,
   scheduleMindDigestSender,
 } from './workers/mind-digest-sender.worker';
+import {
+  mindStandingCheckWorker,
+  scheduleMindStandingCheck,
+} from './workers/mind-standing-check.worker';
 
 async function main(): Promise<void> {
   console.log('agent started');
@@ -16,6 +20,9 @@ async function main(): Promise<void> {
 
   await scheduleMindDigestSender();
   console.log(`mind-digest-sender worker listening (queue: ${mindDigestSenderWorker.name})`);
+
+  await scheduleMindStandingCheck();
+  console.log(`mind-standing-check worker listening (queue: ${mindStandingCheckWorker.name})`);
 }
 
 main().catch((error: unknown) => {
