@@ -30,16 +30,15 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // getSessionCookie() pulls in better-auth's cookie/JWT internals (via
-  // the jose library), which use Node.js-only APIs (DecompressionStream,
-  // crypto) that the default Edge Runtime doesn't support — confirmed via
-  // a real Vercel deployment failure ("The Edge Function 'middleware' is
-  // referencing unsupported modules: @better-auth/core/utils/json,
-  // @better-auth/core/utils/db"). Node.js middleware runtime has been
-  // stable since Next.js 15.5 (no experimental flag required) — this
-  // project resolves to 15.5.22, well past that. Switching the runtime
-  // here is the real fix, not a workaround: Edge Runtime was never a
-  // requirement for this middleware, just the (incompatible) default.
+  // TEMPORARY DIAGNOSTIC (to be reverted): matcher emptied so middleware
+  // still builds and deploys but is never invoked for any request. All
+  // three domains (custom domain, main vercel.app alias, and deployment
+  // alias) started returning a platform-level 404 NOT_FOUND immediately
+  // after this middleware switched to runtime: 'nodejs', even though the
+  // build itself succeeds cleanly and every route (including /) is
+  // generated correctly. This isolates whether middleware invocation
+  // itself is what's breaking Vercel's edge routing, independent of the
+  // runtime setting.
   runtime: 'nodejs',
-  matcher: ['/dashboard/:path*', '/onboarding/:path*'],
+  matcher: [],
 };
