@@ -48,6 +48,14 @@ function isTelegramUpdate(value: unknown): value is TelegramUpdate {
 
 const LINK_COMMAND_PATTERN = /^\/link[@\w]*\s+([A-Za-z0-9]+)/;
 
+// Checkpoint 37: how long a member's activity counts as "the same
+// session" before another participation event is warranted. 30 minutes
+// is a reasonable default for a chat community — long enough that an
+// active conversation doesn't flood the ledger with one event per
+// message, short enough that separate visits later the same day still
+// register as distinct participation.
+const PARTICIPATION_WINDOW_MS = 30 * 60 * 1000;
+
 async function handleLinkingCode(
   code: string,
   chatId: number,
@@ -185,6 +193,17 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
 
     const events = extractEvents({
       isNewMember,
+      hasRecentParticipation: isNewMember
+        ? false // irrelevant — extractEvents won't check it for a new member
+        : Boolean(
+            await prisma.relationshipEvent.findFirst({
+              where: {
+                memberId: member.id,
+                type: 'participation',
+                occurredAt: { gte: new Date(now.getTime() - PARTICIPATION_WINDOW_MS) },
+              },
+            }),
+          ),
       messageText: message.text,
       occurredAt: now,
     });

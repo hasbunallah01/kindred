@@ -16,6 +16,10 @@ export interface ExtractedEvent {
 
 export interface ExtractContext {
   isNewMember: boolean;
+  // Whether this member already has a 'participation' event within the
+  // current window (Checkpoint 37) — computed by the worker via a DB
+  // query, since this module stays free of I/O.
+  hasRecentParticipation: boolean;
   messageText: string;
   occurredAt: Date;
 }
@@ -28,6 +32,13 @@ function truncate(text: string, maxLength = 200): string {
 // 'joined' and a 'first_interaction' event — two distinct facts (they
 // arrived; they said something) even though they happen at the same
 // instant.
+//
+// Checkpoint 37: an EXISTING member's activity produces a lightweight
+// 'participation' event, but only once per window — not once per
+// message, or the ledger floods. A brand-new member's first_interaction
+// already captures "they were active"; participation only applies to
+// members who aren't new, so the two never double up on the same
+// message.
 export function extractEvents(context: ExtractContext): ExtractedEvent[] {
   const events: ExtractedEvent[] = [];
 
@@ -40,6 +51,12 @@ export function extractEvents(context: ExtractContext): ExtractedEvent[] {
     events.push({
       type: 'first_interaction',
       payload: { messagePreview: truncate(context.messageText) },
+      occurredAt: context.occurredAt,
+    });
+  } else if (!context.hasRecentParticipation) {
+    events.push({
+      type: 'participation',
+      payload: {},
       occurredAt: context.occurredAt,
     });
   }
