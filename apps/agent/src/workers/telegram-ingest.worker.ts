@@ -6,6 +6,7 @@ import {
   extractEvents,
   detectCreatorInteractionTarget,
   buildCreatorInteractionEvent,
+  classifyAmbiguousMessage,
 } from '../telegram/extract-events';
 
 // maxRetriesPerRequest: null is required by BullMQ for Worker connections
@@ -112,8 +113,13 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
 
     const message = job.data.update.message;
     if (!message?.text) {
-      // Not a text message (could be a join event, a photo, a sticker,
-      // etc.) — nothing for this checkpoint to do with it yet.
+      // No text content — the rule-based extraction above has nothing to
+      // work with. Routed through the flagged-off OpenAI fallback rather
+      // than a silent return; with ENABLE_OPENAI_FALLBACK at its default
+      // (false), this only logs and does nothing further.
+      if (message) {
+        await classifyAmbiguousMessage({ messageType: 'non-text' });
+      }
       return;
     }
 
