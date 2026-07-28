@@ -1,5 +1,6 @@
 import { EventSource } from 'eventsource';
 import { prisma } from '@kindred/db';
+import { sanitizeEnvValue } from '@kindred/minds-client';
 
 // Persistent connection to SubscribeEvents (Blueprint Section 6.4/6.6),
 // the sixth documented tool confirmed at Checkpoint 40/41. Node.js has no
@@ -39,11 +40,17 @@ export function startMindsSseListener(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   function connect(): void {
-    const accessKey = process.env.MINDS_BUILDER_API_KEY;
-    if (!accessKey) {
+    const rawAccessKey = process.env.MINDS_BUILDER_API_KEY;
+    if (!rawAccessKey) {
       console.error('MINDS_BUILDER_API_KEY is not set — cannot start Minds SSE listener.');
       return;
     }
+    // Same fix as packages/minds-client/index.ts's authHeaders() — a
+    // confirmed real production bug, not hypothetical: an env var value
+    // copied from a dashboard can carry invisible Unicode formatting
+    // characters that fetch's Headers rejects with "Cannot convert
+    // argument to a ByteString".
+    const accessKey = sanitizeEnvValue(rawAccessKey);
 
     eventSource = new EventSource(url, {
       fetch: (input, init) =>

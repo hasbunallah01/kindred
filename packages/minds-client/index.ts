@@ -32,13 +32,35 @@ const ENDPOINTS = {
     `${BASE_URL}/api/messaging/conversations/${encodeURIComponent(alias)}/messages`,
 };
 
+// Confirmed real production bug (live test against the actual API, not
+// a hypothetical): fetch's Headers implementation requires header
+// VALUES to be ByteString-compatible (code points 0-255 only) and
+// throws "Cannot convert argument to a ByteString" otherwise. An env
+// var value copied from a dashboard "copy" button can carry invisible
+// Unicode formatting marks (U+200E/U+200F LEFT-/RIGHT-TO-LEFT MARK,
+// U+FEFF byte-order mark, U+200B zero-width space, U+202A-U+202E
+// directional embedding/override marks) that are invisible when
+// displayed but break exactly this. MINDS_BUILDER_API_KEY was the
+// confirmed culprit — the only one of the three configured Minds env
+// vars placed directly into an HTTP header (X-Access-Key); MINDS_ID
+// goes into a JSON body instead, which doesn't hit this specific
+// restriction the same way, but the same invisible-character risk still
+// applies there (a stray mark could cause a silent mismatch server-side)
+// — so this sanitizer is applied to any env var value used in a request,
+// not just header values.
+const INVISIBLE_FORMATTING_CHARS = /[\u200B-\u200F\uFEFF\u202A-\u202E]/g;
+
+export function sanitizeEnvValue(value: string): string {
+  return value.replace(INVISIBLE_FORMATTING_CHARS, '').trim();
+}
+
 function authHeaders(): Record<string, string> {
-  const accessKey = process.env.MINDS_BUILDER_API_KEY;
-  if (!accessKey) {
+  const rawAccessKey = process.env.MINDS_BUILDER_API_KEY;
+  if (!rawAccessKey) {
     throw new Error('MINDS_BUILDER_API_KEY is not set.');
   }
   return {
-    'X-Access-Key': accessKey,
+    'X-Access-Key': sanitizeEnvValue(rawAccessKey),
     'Content-Type': 'application/json',
   };
 }
@@ -64,10 +86,11 @@ export interface MindsConversation {
 // start chatting with a specific Mind." An account can hold multiple
 // Minds, so the request has to say which one.
 export async function createConversation(): Promise<MindsConversation> {
-  const mindId = process.env.MINDS_ID;
-  if (!mindId) {
+  const rawMindId = process.env.MINDS_ID;
+  if (!rawMindId) {
     throw new Error('MINDS_ID is not set.');
   }
+  const mindId = sanitizeEnvValue(rawMindId);
 
   const response = await fetch(ENDPOINTS.createConversation(), {
     method: 'POST',
