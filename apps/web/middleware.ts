@@ -30,15 +30,20 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // TEMPORARY DIAGNOSTIC (to be reverted): matcher emptied so middleware
-  // still builds and deploys but is never invoked for any request. All
-  // three domains (custom domain, main vercel.app alias, and deployment
-  // alias) started returning a platform-level 404 NOT_FOUND immediately
-  // after this middleware switched to runtime: 'nodejs', even though the
-  // build itself succeeds cleanly and every route (including /) is
-  // generated correctly. This isolates whether middleware invocation
-  // itself is what's breaking Vercel's edge routing, independent of the
-  // runtime setting.
+  // TEMPORARY DIAGNOSTIC (to be reverted): matcher set to a path that
+  // never matches anything real, so middleware still builds and deploys
+  // but is never invoked for any actual request. The first version of
+  // this diagnostic used an empty array (matcher: []) — that build
+  // FAILED outright, a different and more informative failure than the
+  // 404 it was meant to test. Since matcher: [] is the only thing that
+  // changed between "builds fine, 404s at runtime" and "fails to build
+  // at all," an empty matcher array is very likely invalid or mishandled
+  // specifically at Vercel's build/deployment step (Next.js's own local
+  // tooling tolerates it; Vercel's Edge Function manifest generation
+  // apparently does not). Using a real, non-empty (but never-matching)
+  // pattern avoids that failure mode while preserving the same
+  // diagnostic intent: isolate whether middleware invocation itself
+  // (under runtime: 'nodejs') is what broke routing on all three domains.
   runtime: 'nodejs',
-  matcher: [],
+  matcher: ['/__diagnostic_never_matches__'],
 };
