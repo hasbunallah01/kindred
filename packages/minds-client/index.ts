@@ -58,10 +58,21 @@ export interface MindsConversation {
 // Creates a new conversation with the Kindred Mind. Called once per
 // Community at linking time (Checkpoint 42) — the returned alias is what
 // every subsequent call in this file uses to address that conversation.
+//
+// Passes mindId (from MINDS_ID) in the request body — confirmed necessary
+// from the Bazaar listing's own wording for this tool: "Use this to
+// start chatting with a specific Mind." An account can hold multiple
+// Minds, so the request has to say which one.
 export async function createConversation(): Promise<MindsConversation> {
+  const mindId = process.env.MINDS_ID;
+  if (!mindId) {
+    throw new Error('MINDS_ID is not set.');
+  }
+
   const response = await fetch(ENDPOINTS.createConversation(), {
     method: 'POST',
     headers: authHeaders(),
+    body: JSON.stringify({ mindId }),
   });
   await assertOk(response, 'createConversation');
   return (await response.json()) as MindsConversation;
