@@ -108,15 +108,20 @@ enum CommunityStatus {
 }
 
 model Community {
-  id                   String          @id @default(uuid())
-  creatorId            String
-  telegramChatId       BigInt          @unique
-  telegramChatTitle    String
-  mindsConversationId  String?         @unique
-  privacyModeConfirmed Boolean         @default(false)
-  status               CommunityStatus @default(pending_link)
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  id                     String          @id @default(uuid())
+  creatorId              String
+  telegramChatId         BigInt          @unique
+  telegramChatTitle      String
+  mindsConversationId    String?         @unique
+  privacyModeConfirmed   Boolean         @default(false)
+  status                 CommunityStatus @default(pending_link)
+  // Captured from the /link message's sender at linking time (Build Plan
+  // Checkpoint 36) — the only way to know which Telegram identity is "the
+  // creator" for detecting creator_interaction events. Nullable because
+  // it can't be known before a valid /link message is ever processed.
+  creatorTelegramUserId  BigInt?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
   creator User @relation(fields: [creatorId], references: [id])
 
