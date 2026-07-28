@@ -13,9 +13,8 @@ const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379'
 });
 
 // Minimal shape of a Telegram Update — only the fields this worker
-// actually reads. Full message processing (joins, participation,
-// creator-interaction detection, etc.) is Checkpoints 34-37, not here;
-// this checkpoint's scope is deliberately just linking-code resolution.
+// actually reads. Full message processing (join/first-interaction,
+// creator-interaction, participation) is Checkpoints 35-37, not here.
 interface TelegramUpdate {
   message?: {
     text?: string;
@@ -23,6 +22,12 @@ interface TelegramUpdate {
       id: number;
       type: string;
       title?: string;
+    };
+    from?: {
+      id: number;
+      username?: string;
+      first_name?: string;
+      last_name?: string;
     };
   };
 }
@@ -32,6 +37,45 @@ function isTelegramUpdate(value: unknown): value is TelegramUpdate {
 }
 
 const LINK_COMMAND_PATTERN = /^\/link[@\w]*\s+([A-Za-z0-9]+)/;
+
+async function handleLinkingCode(
+  code: string,
+  chatId: number,
+  chatTitle: string | undefined,
+): Promise<void> {
+  const linkRequest = await prisma.telegramLinkRequest.findUnique({ where: { code } });
+
+  if (!linkRequest) {
+    return; // Unknown code — silently ignore (no error reply in-group yet).
+  }
+  if (linkRequest.consumedAt) {
+    return; // Already used.
+  }
+  if (linkRequest.expiresAt < new Date()) {
+    return; // Expired.
+  }
+
+  const telegramChatId = BigInt(chatId);
+
+  await prisma.$transaction([
+    prisma.community.upsert({
+      where: { telegramChatId },
+      create: {
+        creatorId: linkRequest.creatorId,
+        telegramChatId,
+        telegramChatTitle: chatTitle ?? 'Untitled community',
+        status: 'active',
+      },
+      update: {
+        status: 'active',
+      },
+    }),
+    prisma.telegramLinkRequest.update({
+      where: { id: linkRequest.id },
+      data: { consumedAt: new Date() },
+    }),
+  ]);
+}
 
 export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
   QUEUE_NAMES.TELEGRAM_INGEST,
@@ -47,55 +91,61 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       return;
     }
 
-    // Linking codes are only meaningful posted inside a group/supergroup,
-    // never a private DM to the bot.
+    // Linking codes (and Member tracking) are only meaningful inside a
+    // group/supergroup, never a private DM to the bot.
     if (message.chat.type === 'private') {
       return;
     }
 
-    const match = message.text.match(LINK_COMMAND_PATTERN);
-    if (!match || !match[1]) {
+    const telegramChatId = BigInt(message.chat.id);
+    const community = await prisma.community.findUnique({ where: { telegramChatId } });
+
+    if (!community) {
+      // Not linked yet — the only thing that matters here is a valid
+      // linking code (Checkpoint 31/26). Anything else in an unlinked
+      // group has nowhere to attach a Member to (Community FK is
+      // required), so there's nothing more to do with it yet.
+      const match = message.text.match(LINK_COMMAND_PATTERN);
+      if (match?.[1]) {
+        await handleLinkingCode(match[1].toUpperCase(), message.chat.id, message.chat.title);
+      }
       return;
     }
 
-    const code = match[1].toUpperCase();
+    // Community is linked — Checkpoint 34: upsert a Member record for
+    // whoever sent this message. firstSeenAt is only set on create; the
+    // update branch intentionally leaves it untouched so repeat messages
+    // never overwrite it, only lastSeenAt.
+    if (!message.from) {
+      return; // No sender info (e.g. a channel post) — nothing to attribute.
+    }
 
-    const linkRequest = await prisma.telegramLinkRequest.findUnique({
-      where: { code },
+    const telegramUserId = BigInt(message.from.id);
+    const displayName =
+      [message.from.first_name, message.from.last_name].filter(Boolean).join(' ') || 'Unknown';
+    const now = new Date();
+
+    await prisma.member.upsert({
+      where: {
+        communityId_telegramUserId: {
+          communityId: community.id,
+          telegramUserId,
+        },
+      },
+      create: {
+        communityId: community.id,
+        telegramUserId,
+        telegramUsername: message.from.username,
+        displayName,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      },
+      update: {
+        telegramUsername: message.from.username,
+        displayName,
+        lastSeenAt: now,
+      },
     });
-
-    if (!linkRequest) {
-      return; // Unknown code — silently ignore (no error reply in-group yet).
-    }
-
-    if (linkRequest.consumedAt) {
-      return; // Already used.
-    }
-
-    if (linkRequest.expiresAt < new Date()) {
-      return; // Expired.
-    }
-
-    const telegramChatId = BigInt(message.chat.id);
-
-    await prisma.$transaction([
-      prisma.community.upsert({
-        where: { telegramChatId },
-        create: {
-          creatorId: linkRequest.creatorId,
-          telegramChatId,
-          telegramChatTitle: message.chat.title ?? 'Untitled community',
-          status: 'active',
-        },
-        update: {
-          status: 'active',
-        },
-      }),
-      prisma.telegramLinkRequest.update({
-        where: { id: linkRequest.id },
-        data: { consumedAt: new Date() },
-      }),
-    ]);
   },
   { connection },
 );
