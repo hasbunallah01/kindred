@@ -2,6 +2,7 @@ import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { prisma } from '@kindred/db';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
+import { createConversation } from '@kindred/minds-client';
 import {
   extractEvents,
   detectCreatorInteractionTarget,
@@ -82,7 +83,7 @@ async function handleLinkingCode(
   const creatorTelegramUserId =
     fromTelegramUserId !== undefined ? BigInt(fromTelegramUserId) : undefined;
 
-  await prisma.$transaction([
+  const [community] = await prisma.$transaction([
     prisma.community.upsert({
       where: { telegramChatId },
       create: {
@@ -102,6 +103,32 @@ async function handleLinkingCode(
       data: { consumedAt: new Date() },
     }),
   ]);
+
+  // Checkpoint 42: establish the Mind's conversation for this community
+  // now that it's active. Deliberately outside the transaction above —
+  // an external HTTP call has no place inside a database transaction
+  // (it can be slow, and Prisma's transaction isn't what should retry a
+  // network failure). Community.mindsConversationId is nullable exactly
+  // because of this gap between the row existing and this call
+  // succeeding (Blueprint Section 3.2). Stores the ALIAS the Minds
+  // client's other functions expect (Checkpoint 41), not the raw
+  // conversationId — the field name predates that distinction but its
+  // value is what every later sendMessage/getMessageHistory call needs.
+  //
+  // Known limitation, not silently glossed over: if createConversation()
+  // throws here, this job fails and BullMQ may retry it — but on retry,
+  // the Community row already exists, so the update above re-enters the
+  // "already linked" branch of the outer processor rather than retrying
+  // this call. A community could end up permanently missing its Mind
+  // conversation if this specific call fails. Acceptable for this
+  // checkpoint's scope; a real retry/backfill path isn't built here.
+  if (!community.mindsConversationId) {
+    const { alias } = await createConversation();
+    await prisma.community.update({
+      where: { id: community.id },
+      data: { mindsConversationId: alias },
+    });
+  }
 }
 
 export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
