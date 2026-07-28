@@ -30,5 +30,16 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // getSessionCookie() pulls in better-auth's cookie/JWT internals (via
+  // the jose library), which use Node.js-only APIs (DecompressionStream,
+  // crypto) that the default Edge Runtime doesn't support — confirmed via
+  // a real Vercel deployment failure ("The Edge Function 'middleware' is
+  // referencing unsupported modules: @better-auth/core/utils/json,
+  // @better-auth/core/utils/db"). Node.js middleware runtime has been
+  // stable since Next.js 15.5 (no experimental flag required) — this
+  // project resolves to 15.5.22, well past that. Switching the runtime
+  // here is the real fix, not a workaround: Edge Runtime was never a
+  // requirement for this middleware, just the (incompatible) default.
+  runtime: 'nodejs',
   matcher: ['/dashboard/:path*', '/onboarding/:path*'],
 };
