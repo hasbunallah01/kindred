@@ -5,6 +5,8 @@
 // plumbing — the worker (telegram-ingest.worker.ts) is what actually
 // persists whatever this returns.
 
+import { ENABLE_OPENAI_FALLBACK } from '@kindred/shared';
+
 export interface ExtractedEvent {
   type: 'joined' | 'first_interaction' | 'creator_interaction' | 'participation';
   payload: Record<string, unknown>;
@@ -102,4 +104,61 @@ export function buildCreatorInteractionEvent(
     payload: { messagePreview: truncate(messageText) },
     occurredAt,
   };
+}
+
+// Checkpoint 38: messages the rule-based extraction above can't classify
+// at all — currently, anything without text (photos, stickers, voice
+// notes, etc.), since every rule above depends on message.text. Off by
+// default (ENABLE_OPENAI_FALLBACK, packages/shared) — ambiguous messages
+// are simply skipped/logged, never sent anywhere. This exists so the
+// code path is real and testable, not as a tuned classifier.
+export interface AmbiguousMessageContext {
+  messageType: string;
+}
+
+export async function classifyAmbiguousMessage(
+  context: AmbiguousMessageContext,
+): Promise<ExtractedEvent['type'] | null> {
+  if (!ENABLE_OPENAI_FALLBACK) {
+    console.log(
+      `Skipping ambiguous message (type: ${context.messageType}) — OpenAI fallback is disabled.`,
+    );
+    return null;
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.warn('ENABLE_OPENAI_FALLBACK is true but OPENAI_API_KEY is not set — skipping.');
+    return null;
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content:
+            "Classify a Telegram message that has no text content (e.g. a photo, sticker, or voice note) as either 'participation' or 'none'. Respond with only that single word.",
+        },
+        { role: 'user', content: `Message type: ${context.messageType}` },
+      ],
+      max_tokens: 5,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('OpenAI fallback request failed with status', response.status);
+    return null;
+  }
+
+  const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+  const guess = data.choices?.[0]?.message?.content?.trim().toLowerCase();
+
+  return guess === 'participation' ? 'participation' : null;
 }

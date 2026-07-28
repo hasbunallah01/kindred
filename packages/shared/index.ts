@@ -22,3 +22,13 @@ export interface TelegramIngestJobData {
   update: unknown;
   receivedAt: string;
 }
+
+// Build Plan Checkpoint 38 / Blueprint Sections 5.3 & 14: whether ambiguous
+// messages (ones the rule-based extraction in
+// apps/agent/src/telegram/extract-events.ts can't classify — currently,
+// any non-text message: photos, stickers, voice notes) are sent to OpenAI
+// for a best-guess classification. Off by default — ambiguous messages
+// are simply skipped/logged instead. This is a plain constant, not an env
+// var, so flipping it is a deliberate local code change, not something
+// that can be silently toggled by configuration.
+export const ENABLE_OPENAI_FALLBACK = false;
