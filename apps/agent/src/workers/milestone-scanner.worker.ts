@@ -1,16 +1,7 @@
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { prisma } from '@kindred/db';
-
-// Checkpoint 51: queue name local to this module. The other workers
-// (telegram-ingest, mind-digest-sender, mind-standing-check) source
-// their queue names from QUEUE_NAMES in @kindred/shared, but adding
-// an entry there would touch a file outside this checkpoint's scope.
-// When the broader worker-registration wiring lands in a later
-// checkpoint, the constant can be promoted to QUEUE_NAMES and this
-// local definition removed in favor of the shared import — the
-// literal string value is the contract either way.
-const MILESTONE_SCANNER_QUEUE = 'milestone-scanner';
+import { QUEUE_NAMES } from '@kindred/shared';
 
 const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
@@ -31,7 +22,7 @@ const REPEAT_JOB_ID = 'milestone-scanner-recurring';
 // short enough that the daily run never accumulates a long backlog.
 const MILESTONE_LOOKAHEAD_DAYS = 7;
 
-const milestoneScannerQueue = new Queue(MILESTONE_SCANNER_QUEUE, { connection });
+const milestoneScannerQueue = new Queue(QUEUE_NAMES.MILESTONE_SCANNER, { connection });
 
 export async function scheduleMilestoneScanner(): Promise<void> {
   await milestoneScannerQueue.add(
@@ -206,7 +197,7 @@ async function emitMilestoneEvents(candidates: AnniversaryCandidate[]): Promise<
 }
 
 export const milestoneScannerWorker = new Worker(
-  MILESTONE_SCANNER_QUEUE,
+  QUEUE_NAMES.MILESTONE_SCANNER,
   async () => {
     const communities = await prisma.community.findMany({
       where: { status: 'active' },
