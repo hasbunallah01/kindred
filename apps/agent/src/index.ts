@@ -13,6 +13,7 @@ import {
   mindStandingCheckWorker,
   scheduleMindStandingCheck,
 } from './workers/mind-standing-check.worker';
+import { startMindsInsightListener } from './minds/sse-listener';
 
 async function main(): Promise<void> {
   console.log('agent started');
@@ -23,6 +24,9 @@ async function main(): Promise<void> {
 
   await scheduleMindStandingCheck();
   console.log(`mind-standing-check worker listening (queue: ${mindStandingCheckWorker.name})`);
+
+  startMindsInsightListener();
+  console.log('Minds SSE insight listener started.');
 }
 
 main().catch((error: unknown) => {

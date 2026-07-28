@@ -1,4 +1,5 @@
 import { EventSource } from 'eventsource';
+import { prisma } from '@kindred/db';
 
 // Persistent connection to SubscribeEvents (Blueprint Section 6.4/6.6),
 // the sixth documented tool confirmed at Checkpoint 40/41. Node.js has no
@@ -87,4 +88,75 @@ export function startMindsSseListener(
       eventSource?.close();
     },
   };
+}
+
+// Checkpoint 48: turns Mind-originated SSE events into Insight rows
+// (source: 'autonomous'). Deliberately a separate function from
+// startMindsSseListener above, not a change to it — that function is
+// generic and Prisma-free, and its connection/reconnect behavior was
+// already proven correct with a real local test (Checkpoint 47); this
+// layers the actual business logic on top via the same onEvent callback
+// shape, rather than modifying the tested function itself.
+//
+// NOT CONFIRMED: the exact JSON shape of an SSE event payload. No
+// OpenAPI spec or rendered docs page was reachable from this sandbox —
+// same caveat as every other unconfirmed detail in packages/minds-client
+// and this file. The shape assumed below (an object with an "alias" and
+// a nested message.content) is a reasonable construction from the
+// Bazaar listing's description ("real-time message updates... filter by
+// alias"), not a verified schema. Parsed defensively — any event that
+// doesn't match is logged and skipped rather than crashing the listener.
+interface MindsSseEventPayload {
+  alias?: string;
+  message?: {
+    role?: string;
+    content?: string;
+  };
+}
+
+export async function handleMindsSseEvent(data: string): Promise<void> {
+  let payload: MindsSseEventPayload;
+  try {
+    payload = JSON.parse(data) as MindsSseEventPayload;
+  } catch {
+    console.error('Received non-JSON Minds SSE event, skipping:', data);
+    return;
+  }
+
+  const { alias, message } = payload;
+  const content = message?.content;
+
+  if (!alias || !content) {
+    console.error('Minds SSE event missing alias or message content, skipping:', payload);
+    return;
+  }
+
+  const community = await prisma.community.findFirst({
+    where: { mindsConversationId: alias },
+  });
+
+  if (!community) {
+    console.error(`No Community found for Mind conversation alias "${alias}", skipping.`);
+    return;
+  }
+
+  await prisma.insight.create({
+    data: {
+      communityId: community.id,
+      source: 'autonomous',
+      content,
+    },
+  });
+
+  console.log(`Created autonomous Insight for community ${community.id}.`);
+}
+
+// Convenience wrapper for apps/agent/src/index.ts — starts the listener
+// wired directly to the Insight-creation handler above.
+export function startMindsInsightListener(): SseListenerHandle {
+  return startMindsSseListener((data) => {
+    void handleMindsSseEvent(data).catch((error: unknown) => {
+      console.error('Failed to handle Minds SSE event:', error);
+    });
+  });
 }
