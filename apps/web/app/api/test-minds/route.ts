@@ -10,13 +10,12 @@ import { sanitizeEnvValue } from '@kindred/minds-client';
 // because the character at index 37 has a value of 8206" (U+200E,
 // LEFT-TO-RIGHT MARK) — an invisible Unicode formatting character,
 // almost certainly picked up from copying a value off a dashboard "copy"
-// button. Deduced which variable: of the three configured Minds env
-// vars, only MINDS_BUILDER_API_KEY is placed directly into an HTTP
-// header (X-Access-Key) — MINDS_ID goes into the JSON body and
-// HELLOMINDS_API_URL goes into the fetch URL, neither of which hits this
-// specific ByteString restriction the same way. This route now (1) scans
-// every configured value for exactly this class of character and
-// reports precisely which one(s) and at what index, for a confirmed
+// button. Deduced which variable: of the configured Minds env vars,
+// only MINDS_BUILDER_API_KEY is placed directly into an HTTP header
+// (X-Api-Key) — MINDS_ID goes into the JSON body, which doesn't hit
+// this specific ByteString restriction the same way. This route now
+// (1) scans every configured value for exactly this class of character
+// and reports precisely which one(s) and at what index, for a confirmed
 // answer rather than inference alone, and (2) applies the same fix now
 // in packages/minds-client/index.ts (sanitizeEnvValue) to the values
 // actually used in the retried request below.
@@ -63,17 +62,12 @@ function findCharacterIssues(value: string): CharacterIssue[] {
 }
 
 export async function GET() {
-  const rawBaseUrl = process.env.HELLOMINDS_API_URL ?? 'https://hellominds.ai';
-  const rawAccessKey = process.env.MINDS_BUILDER_API_KEY;
+  const rawApiKey = process.env.MINDS_BUILDER_API_KEY;
   const rawMindId = process.env.MINDS_ID;
 
   const diagnostics = {
-    HELLOMINDS_API_URL: {
-      length: rawBaseUrl.length,
-      issues: findCharacterIssues(rawBaseUrl),
-    },
-    MINDS_BUILDER_API_KEY: rawAccessKey
-      ? { length: rawAccessKey.length, issues: findCharacterIssues(rawAccessKey) }
+    MINDS_BUILDER_API_KEY: rawApiKey
+      ? { length: rawApiKey.length, issues: findCharacterIssues(rawApiKey) }
       : 'MISSING',
     MINDS_ID: rawMindId
       ? { length: rawMindId.length, issues: findCharacterIssues(rawMindId) }
@@ -82,7 +76,7 @@ export async function GET() {
 
   console.log('[test-minds] Character diagnostics:', diagnostics);
 
-  if (!rawAccessKey) {
+  if (!rawApiKey) {
     return NextResponse.json(
       { error: 'MINDS_BUILDER_API_KEY is not set in this environment.', diagnostics },
       { status: 500 },
@@ -97,17 +91,21 @@ export async function GET() {
 
   // The actual fix, applied here too so this endpoint's retry reflects
   // the same behavior as the real client.
-  const accessKey = sanitizeEnvValue(rawAccessKey);
+  const apiKey = sanitizeEnvValue(rawApiKey);
   const mindId = sanitizeEnvValue(rawMindId);
-  const baseUrl = sanitizeEnvValue(rawBaseUrl);
 
-  const url = `${baseUrl}/api/messaging/conversations`;
-  const requestBody = { mindId };
+  // The official Hello Minds Builder API base URL is fixed and
+  // hardcoded by the client — HELLOMINDS_API_URL no longer exists.
+  const url = `https://api.build.hellominds.ai/v1/messaging/conversation`;
+  // Per the official API, CreateConversation's body is { alias, mindId };
+  // alias is a client-chosen handle generated per call (the real client
+  // uses crypto.randomUUID()).
+  const requestBody = { alias: crypto.randomUUID(), mindId };
 
   console.log('[test-minds] Request (post-sanitization):', {
     method: 'POST',
     url,
-    headers: { 'X-Access-Key': '[REDACTED]', 'Content-Type': 'application/json' },
+    headers: { 'X-Api-Key': '[REDACTED]', 'Content-Type': 'application/json' },
     body: requestBody,
   });
 
@@ -115,7 +113,7 @@ export async function GET() {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'X-Access-Key': accessKey,
+        'X-Api-Key': apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
