@@ -2,20 +2,14 @@ import { EventSource } from 'eventsource';
 import { prisma } from '@kindred/db';
 import { sanitizeEnvValue } from '@kindred/minds-client';
 
-// Persistent connection to SubscribeEvents (Blueprint Section 6.4/6.6),
-// the sixth documented tool confirmed at Checkpoint 40/41. Node.js has no
-// native EventSource (that's a browser-only API — the Bazaar listing
-// itself notes "Frontend apps should use EventSource API directly"),
-// hence the 'eventsource' npm package, which supports Node via a
-// fetch-override for custom headers (its default constructor has no
-// headers option, unlike browser EventSource's cookie-based auth model).
-//
-// NOT CONFIRMED: the exact URL path below — same caveat as
-// packages/minds-client/index.ts (no OpenAPI spec, SDK, or rendered docs
-// page was reachable from this sandbox). Isolated here as the one place
-// to fix if it differs from what your own logged-in dashboard shows.
-const BASE_URL = process.env.HELLOMINDS_API_URL ?? 'https://hellominds.ai';
-const SUBSCRIBE_EVENTS_PATH = '/api/messaging/events';
+// Persistent connection to SubscribeEvents on the official Hello Minds
+// Builder API (Blueprint Section 6.4/6.6). Node.js has no native
+// EventSource (that's a browser-only API), hence the 'eventsource' npm
+// package, which supports Node via a fetch-override for custom headers
+// (its default constructor has no headers option, unlike browser
+// EventSource's cookie-based auth model).
+const BASE_URL = 'https://api.build.hellominds.ai';
+const SUBSCRIBE_EVENTS_PATH = '/v1/messaging/events';
 
 const INITIAL_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -40,8 +34,8 @@ export function startMindsSseListener(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   function connect(): void {
-    const rawAccessKey = process.env.MINDS_BUILDER_API_KEY;
-    if (!rawAccessKey) {
+    const rawApiKey = process.env.MINDS_BUILDER_API_KEY;
+    if (!rawApiKey) {
       console.error('MINDS_BUILDER_API_KEY is not set — cannot start Minds SSE listener.');
       return;
     }
@@ -50,13 +44,13 @@ export function startMindsSseListener(
     // copied from a dashboard can carry invisible Unicode formatting
     // characters that fetch's Headers rejects with "Cannot convert
     // argument to a ByteString".
-    const accessKey = sanitizeEnvValue(rawAccessKey);
+    const apiKey = sanitizeEnvValue(rawApiKey);
 
     eventSource = new EventSource(url, {
       fetch: (input, init) =>
         fetch(input, {
           ...init,
-          headers: { ...init?.headers, 'X-Access-Key': accessKey },
+          headers: { ...init?.headers, 'X-Api-Key': apiKey },
         }),
     });
 
@@ -105,14 +99,14 @@ export function startMindsSseListener(
 // layers the actual business logic on top via the same onEvent callback
 // shape, rather than modifying the tested function itself.
 //
-// NOT CONFIRMED: the exact JSON shape of an SSE event payload. No
-// OpenAPI spec or rendered docs page was reachable from this sandbox —
-// same caveat as every other unconfirmed detail in packages/minds-client
-// and this file. The shape assumed below (an object with an "alias" and
-// a nested message.content) is a reasonable construction from the
-// Bazaar listing's description ("real-time message updates... filter by
-// alias"), not a verified schema. Parsed defensively — any event that
-// doesn't match is logged and skipped rather than crashing the listener.
+// TODO(builders-api-sse-shape): confirm the exact JSON field names of a
+// Minds SSE event payload against the official Hello Minds Builder API
+// docs. The shape assumed below (an object with a top-level "alias" and
+// a nested message.content) was carried over from the previous
+// (now-deprecated) API guess. Parsed defensively — any event that
+// doesn't match is logged and skipped rather than crashing the
+// listener — but a real verification may require renaming the fields
+// here once the Builder API SSE schema is known.
 interface MindsSseEventPayload {
   alias?: string;
   message?: {
