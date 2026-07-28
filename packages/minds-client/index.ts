@@ -1,35 +1,17 @@
-// Thin, typed wrapper over the HelloMinds Messaging API (Blueprint
-// Section 6.4). Build Plan Checkpoint 41 scope: CreateConversation,
-// SendMessage, GetMessageHistory only — GetConversation and
-// ListConversations are documented but not needed by any checkpoint in
-// this build (Blueprint 6.4: "admin/ops tooling only, not creator-facing");
-// SubscribeEvents is added separately at Checkpoint 47.
-//
-// CONFIRMED (from the Ethoswarm Bazaar "Hello Minds Messaging" listing,
-// the only reachable documentation of this API — see Checkpoint 40's
-// commit): auth via a Builder Access Key in an X-Access-Key header;
-// each tool's HTTP method; SendMessage and GetConversation are keyed by
-// "alias", not the raw conversationId; CreateConversation's response
-// includes both; GetMessageHistory paginates with a "fingerprint"
-// cursor, not a page/offset.
-//
-// NOT CONFIRMED: the exact URL sub-paths below. No OpenAPI spec, SDK, or
-// rendered docs page was reachable from this sandbox — hellominds.ai/docs
-// and build.hellominds.ai are both client-rendered apps this
-// environment's fetch tool cannot execute. The paths below are
-// constructed by ordinary REST convention from the documented tool names
-// and are deliberately isolated in ENDPOINTS below as the one place to
-// fix if they turn out to differ — check your own logged-in dashboard
-// (which renders fine in a real browser) against these.
+// Thin, typed wrapper over the official Hello Minds Builder API
+// (https://api.build.hellominds.ai). Confirmed against the Builder API
+// docs: auth via an API key in an X-Api-Key header, CreateConversation
+// keyed by mindId, SendMessage keyed by alias with a messageText field,
+// GetMessageHistory paginated with after/limit (no fingerprint cursor),
+// and SubscribeEvents exposed as a separate SSE endpoint.
 
-const BASE_URL = process.env.HELLOMINDS_API_URL ?? 'https://hellominds.ai';
+const BASE_URL = 'https://api.build.hellominds.ai';
 
 const ENDPOINTS = {
-  createConversation: () => `${BASE_URL}/api/messaging/conversations`,
-  sendMessage: (alias: string) =>
-    `${BASE_URL}/api/messaging/conversations/${encodeURIComponent(alias)}/messages`,
+  createConversation: () => `${BASE_URL}/v1/messaging/conversation`,
+  sendMessage: () => `${BASE_URL}/v1/messaging/message`,
   getMessageHistory: (alias: string) =>
-    `${BASE_URL}/api/messaging/conversations/${encodeURIComponent(alias)}/messages`,
+    `${BASE_URL}/v1/messaging/histories/${encodeURIComponent(alias)}`,
 };
 
 // Confirmed real production bug (live test against the actual API, not
@@ -40,14 +22,14 @@ const ENDPOINTS = {
 // Unicode formatting marks (U+200E/U+200F LEFT-/RIGHT-TO-LEFT MARK,
 // U+FEFF byte-order mark, U+200B zero-width space, U+202A-U+202E
 // directional embedding/override marks) that are invisible when
-// displayed but break exactly this. MINDS_BUILDER_API_KEY was the
-// confirmed culprit — the only one of the three configured Minds env
-// vars placed directly into an HTTP header (X-Access-Key); MINDS_ID
-// goes into a JSON body instead, which doesn't hit this specific
-// restriction the same way, but the same invisible-character risk still
-// applies there (a stray mark could cause a silent mismatch server-side)
-// — so this sanitizer is applied to any env var value used in a request,
-// not just header values.
+// displayed but break exactly this. MINDS_BUILDER_API_KEY is the
+// confirmed culprit — the only one of the configured Minds env vars
+// placed directly into an HTTP header (X-Api-Key); MINDS_ID goes into
+// a JSON body instead, which doesn't hit this specific restriction the
+// same way, but the same invisible-character risk still applies there
+// (a stray mark could cause a silent mismatch server-side) — so this
+// sanitizer is applied to any env var value used in a request, not just
+// header values.
 const INVISIBLE_FORMATTING_CHARS = /[\u200B-\u200F\uFEFF\u202A-\u202E]/g;
 
 export function sanitizeEnvValue(value: string): string {
@@ -55,12 +37,12 @@ export function sanitizeEnvValue(value: string): string {
 }
 
 function authHeaders(): Record<string, string> {
-  const rawAccessKey = process.env.MINDS_BUILDER_API_KEY;
-  if (!rawAccessKey) {
+  const rawApiKey = process.env.MINDS_BUILDER_API_KEY;
+  if (!rawApiKey) {
     throw new Error('MINDS_BUILDER_API_KEY is not set.');
   }
   return {
-    'X-Access-Key': sanitizeEnvValue(rawAccessKey),
+    'X-Api-Key': sanitizeEnvValue(rawApiKey),
     'Content-Type': 'application/json',
   };
 }
@@ -77,25 +59,23 @@ export interface MindsConversation {
   alias: string;
 }
 
-// Creates a new conversation with the Kindred Mind. Called once per
-// Community at linking time (Checkpoint 42) — the returned alias is what
-// every subsequent call in this file uses to address that conversation.
-//
-// Passes mindId (from MINDS_ID) in the request body — confirmed necessary
-// from the Bazaar listing's own wording for this tool: "Use this to
-// start chatting with a specific Mind." An account can hold multiple
-// Minds, so the request has to say which one.
+// Creates a new conversation with the Kindred Mind. The official
+// CreateConversation body takes both alias (the client-chosen handle
+// every subsequent call will use to address this conversation) and
+// mindId (from MINDS_ID). The alias is a fresh UUID generated per
+// conversation.
 export async function createConversation(): Promise<MindsConversation> {
   const rawMindId = process.env.MINDS_ID;
   if (!rawMindId) {
     throw new Error('MINDS_ID is not set.');
   }
   const mindId = sanitizeEnvValue(rawMindId);
+  const alias = crypto.randomUUID();
 
   const response = await fetch(ENDPOINTS.createConversation(), {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ mindId }),
+    body: JSON.stringify({ alias, mindId }),
   });
   await assertOk(response, 'createConversation');
   return (await response.json()) as MindsConversation;
@@ -107,27 +87,20 @@ export interface MindsMessage {
   createdAt?: string;
 }
 
-// Sends a message into the conversation identified by alias — used for
-// batched relationship-event digests (Checkpoint 43), standing-check
-// nudges (Checkpoint 46), and the reactive "Ask Kindred" flow
-// (Checkpoint 49, called directly from apps/web).
+// Sends a message into the conversation identified by alias. The
+// official Builder API takes both alias and messageText in the body
+// (no conversation id in the path), so we pass alias through here
+// rather than baking it into the URL.
 export async function sendMessage(alias: string, content: string): Promise<MindsMessage> {
-  const response = await fetch(ENDPOINTS.sendMessage(alias), {
+  const response = await fetch(ENDPOINTS.sendMessage(), {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ alias, messageText: content }),
   });
   await assertOk(response, 'sendMessage');
   return (await response.json()) as MindsMessage;
 }
 
-// Checkpoint 45: the documented API surface (CreateConversation,
-// GetConversation, GetMessageHistory, ListConversations, SendMessage,
-// SubscribeEvents — the same 6 tools confirmed at Checkpoint 41) has no
-// dedicated "set standing instructions" endpoint. Per the Build Plan's
-// own documented fallback for this exact case, standing instructions are
-// established via an initial SendMessage carrying the directive as plain
-// text, rather than a first-class API concept.
 export const STANDING_INSTRUCTIONS =
   'Watch for members who were consistently active and have gone unusually ' +
   'quiet. When this happens, tell me who they are and why they mattered. ' +
@@ -140,23 +113,25 @@ export async function setStandingInstructions(alias: string): Promise<MindsMessa
 
 export interface MessageHistoryPage {
   messages: MindsMessage[];
-  // "fingerprint" per the documented pagination mechanism — a forward-only
-  // cursor, not a page number or offset. Undefined/absent means no further
-  // pages.
-  nextFingerprint?: string;
+  // Forward-only cursor on the official API (the `after` query param).
+  // Undefined/absent means no further pages.
+  nextAfter?: string;
 }
 
-// Retrieves message history for a conversation, optionally continuing
-// from a prior page's fingerprint cursor. Used for digest verification
-// (Checkpoint 44) and polling for the Mind's reactive answer
-// (Checkpoint 49) when SSE isn't the delivery path in use.
+// Retrieves message history for a conversation. The official API
+// paginates with `after` (an opaque forward cursor, equivalent to the
+// earlier "fingerprint") and `limit`, not page/offset.
 export async function getMessageHistory(
   alias: string,
-  fingerprint?: string,
+  after?: string,
+  limit?: number,
 ): Promise<MessageHistoryPage> {
   const url = new URL(ENDPOINTS.getMessageHistory(alias));
-  if (fingerprint) {
-    url.searchParams.set('fingerprint', fingerprint);
+  if (after) {
+    url.searchParams.set('after', after);
+  }
+  if (limit !== undefined) {
+    url.searchParams.set('limit', String(limit));
   }
 
   const response = await fetch(url.toString(), { headers: authHeaders() });
