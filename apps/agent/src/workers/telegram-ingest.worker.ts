@@ -2,6 +2,7 @@ import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { prisma } from '@kindred/db';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
+import { extractEvents } from '../telegram/extract-events';
 
 // maxRetriesPerRequest: null is required by BullMQ for Worker connections
 // (it throws otherwise) — a worker is a background process that's
@@ -125,7 +126,20 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       [message.from.first_name, message.from.last_name].filter(Boolean).join(' ') || 'Unknown';
     const now = new Date();
 
-    await prisma.member.upsert({
+    // Checked BEFORE the upsert — this is the only way to know whether the
+    // upsert below is about to create a brand-new Member or update an
+    // existing one (Prisma's upsert result doesn't say which happened).
+    const existingMember = await prisma.member.findUnique({
+      where: {
+        communityId_telegramUserId: {
+          communityId: community.id,
+          telegramUserId,
+        },
+      },
+    });
+    const isNewMember = !existingMember;
+
+    const member = await prisma.member.upsert({
       where: {
         communityId_telegramUserId: {
           communityId: community.id,
@@ -146,6 +160,23 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
         lastSeenAt: now,
       },
     });
+
+    const events = extractEvents({
+      isNewMember,
+      messageText: message.text,
+      occurredAt: now,
+    });
+
+    if (events.length > 0) {
+      await prisma.relationshipEvent.createMany({
+        data: events.map((event) => ({
+          memberId: event.memberIdOverride ?? member.id,
+          type: event.type,
+          payload: event.payload,
+          occurredAt: event.occurredAt,
+        })),
+      });
+    }
   },
   { connection },
 );
