@@ -4,26 +4,44 @@
 // than each instantiating their own client — one schema, one client, no
 // drift between the two deployments (Blueprint Section 1.2).
 //
-// IMPORTANT — Prisma 7's custom generator output path: our generator block
-// (schema.prisma) declares `output = "./generated/client"`. Per Prisma's own
-// Better Auth integration guide, once a custom output path is configured you
-// must import PrismaClient from that generated location, never from
-// "@prisma/client". The exact generated entry-file path below
-// (./generated/client/client) matches the documented pattern for this
-// output setting, but this package's generated/ directory does not exist
-// in this environment — `prisma generate` could not be run here (see the
-// Checkpoint 5 commit). If the actual generated output uses a different
-// entry filename, this import is the first thing to fix once you run
-// `npm run generate` in this package on a machine with normal internet
-// access.
+// Import path: our generator block (schema.prisma) declares
+// `output = "./generated/client"`, and PrismaClient is imported from that
+// generated location (confirmed working — see below), never from
+// "@prisma/client" directly (that package is still required as a runtime
+// dependency, though — the generated client's internal files import
+// shared runtime code from "@prisma/client/runtime/*". Confirmed root
+// cause of a real Vercel build failure: that package was missing from
+// this workspace's dependencies. Fixed by adding it to package.json.
 import { PrismaClient } from './generated/client/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
+
+const { Pool } = pg;
+
+// Prisma 7 removed the internal connection engine entirely: calling
+// `new PrismaClient()` with no arguments now throws
+// "PrismaClient needs to be constructed with a non-empty, valid
+// PrismaClientOptions" at runtime. A driver adapter is required — no
+// fallback exists. This wraps a standard `pg` connection pool in Prisma's
+// official Postgres adapter and passes it explicitly.
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+  pgPool?: pg.Pool;
+};
+
+const pool =
+  globalForPrisma.pgPool ??
+  new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
+const adapter = new PrismaPg(pool);
 
 // Prevents Next.js's dev-mode hot-reloading from creating a new PrismaClient
-// (and a new pool of database connections) on every module reload.
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-export const prisma: PrismaClient = globalForPrisma.prisma ?? new PrismaClient();
+// (and a new connection pool) on every module reload.
+export const prisma: PrismaClient = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
+  globalForPrisma.pgPool = pool;
 }
