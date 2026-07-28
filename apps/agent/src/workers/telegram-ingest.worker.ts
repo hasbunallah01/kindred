@@ -2,7 +2,11 @@ import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { prisma } from '@kindred/db';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
-import { extractEvents } from '../telegram/extract-events';
+import {
+  extractEvents,
+  detectCreatorInteractionTarget,
+  buildCreatorInteractionEvent,
+} from '../telegram/extract-events';
 
 // maxRetriesPerRequest: null is required by BullMQ for Worker connections
 // (it throws otherwise) — a worker is a background process that's
@@ -30,6 +34,11 @@ interface TelegramUpdate {
       first_name?: string;
       last_name?: string;
     };
+    reply_to_message?: {
+      from?: {
+        id: number;
+      };
+    };
   };
 }
 
@@ -43,6 +52,7 @@ async function handleLinkingCode(
   code: string,
   chatId: number,
   chatTitle: string | undefined,
+  fromTelegramUserId: number | undefined,
 ): Promise<void> {
   const linkRequest = await prisma.telegramLinkRequest.findUnique({ where: { code } });
 
@@ -57,6 +67,11 @@ async function handleLinkingCode(
   }
 
   const telegramChatId = BigInt(chatId);
+  // Whoever posts a valid /link code is assumed to be the creator setting
+  // up the connection — captured now since it's the only point at which
+  // we ever learn this identity (Checkpoint 36).
+  const creatorTelegramUserId =
+    fromTelegramUserId !== undefined ? BigInt(fromTelegramUserId) : undefined;
 
   await prisma.$transaction([
     prisma.community.upsert({
@@ -66,9 +81,11 @@ async function handleLinkingCode(
         telegramChatId,
         telegramChatTitle: chatTitle ?? 'Untitled community',
         status: 'active',
+        creatorTelegramUserId,
       },
       update: {
         status: 'active',
+        ...(creatorTelegramUserId !== undefined ? { creatorTelegramUserId } : {}),
       },
     }),
     prisma.telegramLinkRequest.update({
@@ -108,7 +125,12 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       // required), so there's nothing more to do with it yet.
       const match = message.text.match(LINK_COMMAND_PATTERN);
       if (match?.[1]) {
-        await handleLinkingCode(match[1].toUpperCase(), message.chat.id, message.chat.title);
+        await handleLinkingCode(
+          match[1].toUpperCase(),
+          message.chat.id,
+          message.chat.title,
+          message.from?.id,
+        );
       }
       return;
     }
@@ -166,6 +188,40 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       messageText: message.text,
       occurredAt: now,
     });
+
+    // Checkpoint 36: was this message the creator replying to a specific
+    // member? Requires community.creatorTelegramUserId to have been
+    // captured already (only happens once a /link message has been
+    // processed — see handleLinkingCode above).
+    const replyToTelegramUserId = message.reply_to_message?.from
+      ? BigInt(message.reply_to_message.from.id)
+      : undefined;
+
+    const creatorInteractionTarget = detectCreatorInteractionTarget({
+      isFromCreator:
+        community.creatorTelegramUserId !== null &&
+        telegramUserId === community.creatorTelegramUserId,
+      replyToTelegramUserId,
+      creatorTelegramUserId: community.creatorTelegramUserId ?? undefined,
+    });
+
+    if (creatorInteractionTarget !== null) {
+      const repliedToMember = await prisma.member.findUnique({
+        where: {
+          communityId_telegramUserId: {
+            communityId: community.id,
+            telegramUserId: creatorInteractionTarget,
+          },
+        },
+      });
+
+      if (repliedToMember) {
+        events.push({
+          ...buildCreatorInteractionEvent(message.text, now),
+          memberIdOverride: repliedToMember.id,
+        });
+      }
+    }
 
     if (events.length > 0) {
       await prisma.relationshipEvent.createMany({

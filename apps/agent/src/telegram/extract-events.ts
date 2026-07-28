@@ -46,3 +46,43 @@ export function extractEvents(context: ExtractContext): ExtractedEvent[] {
 
   return events;
 }
+
+// Checkpoint 36: a creator_interaction event is only meaningful when the
+// creator is replying to a *specific* member — RelationshipEvent.memberId
+// is required (schema), so a generic creator announcement with no
+// reply_to_message has no member to attach an event to and correctly
+// produces nothing.
+export interface CreatorReplyContext {
+  isFromCreator: boolean;
+  replyToTelegramUserId?: bigint;
+  creatorTelegramUserId?: bigint;
+}
+
+// Returns the Telegram user ID being replied to, if this message qualifies
+// as a creator-to-member interaction — null otherwise. The worker still
+// has to look up whether that Telegram user is actually a tracked Member
+// (I/O), which is why this stays a plain predicate rather than returning
+// a full event.
+export function detectCreatorInteractionTarget(context: CreatorReplyContext): bigint | null {
+  if (!context.isFromCreator) {
+    return null;
+  }
+  if (context.replyToTelegramUserId === undefined || context.creatorTelegramUserId === undefined) {
+    return null;
+  }
+  if (context.replyToTelegramUserId === context.creatorTelegramUserId) {
+    return null; // Replying to themselves isn't an interaction with a member.
+  }
+  return context.replyToTelegramUserId;
+}
+
+export function buildCreatorInteractionEvent(
+  messageText: string,
+  occurredAt: Date,
+): ExtractedEvent {
+  return {
+    type: 'creator_interaction',
+    payload: { messagePreview: truncate(messageText) },
+    occurredAt,
+  };
+}
