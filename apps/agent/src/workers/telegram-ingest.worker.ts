@@ -9,6 +9,12 @@ import {
   buildCreatorInteractionEvent,
   classifyAmbiguousMessage,
 } from '../telegram/extract-events';
+import {
+  handleStartCommand,
+  handleMyChatMemberUpdate,
+  handlePrivateDefaultReply,
+  type MyChatMemberUpdate,
+} from '../telegram/onboarding';
 
 // maxRetriesPerRequest: null is required by BullMQ for Worker connections
 // (it throws otherwise) — a worker is a background process that's
@@ -28,6 +34,12 @@ const connection = new IORedis(process.env.REDIS_URL!, {
 // Minimal shape of a Telegram Update — only the fields this worker
 // actually reads. Full message processing (join/first-interaction,
 // creator-interaction, participation) is Checkpoints 35-37, not here.
+//
+// The onboarding flow (Steps 2-5 of the Telegram onboarding spec)
+// adds two new update types to the worker's surface area:
+//   - my_chat_member: bot's status changed in a group (join/promote/kick)
+//   - private-chat message text starting with /start (handled inline
+//     below, dispatched to handleStartCommand)
 interface TelegramUpdate {
   message?: {
     text?: string;
@@ -48,13 +60,52 @@ interface TelegramUpdate {
       };
     };
   };
+  // Telegram sends this when the bot's own membership status in a
+  // chat changes — the trigger for Steps 3 and 4 of the onboarding
+  // flow. The shape is asserted by isMyChatMemberUpdate below before
+  // the onboarding handler is called.
+  my_chat_member?: {
+    chat: { id: number; type: string; title?: string };
+    from: { id: number };
+    date: number;
+    new_chat_member: { status: string };
+  };
 }
 
 function isTelegramUpdate(value: unknown): value is TelegramUpdate {
   return typeof value === 'object' && value !== null;
 }
 
+// Narrow my_chat_member to the exact shape the onboarding module
+// consumes. Keeps a malformed update from blowing up later code with
+// an undefined deref.
+function isMyChatMemberUpdate(value: unknown): value is MyChatMemberUpdate {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.chat !== 'object' || v.chat === null) return false;
+  if (typeof v.from !== 'object' || v.from === null) return false;
+  if (typeof v.new_chat_member !== 'object' || v.new_chat_member === null) return false;
+  const chat = v.chat as Record<string, unknown>;
+  const from = v.from as Record<string, unknown>;
+  const member = v.new_chat_member as Record<string, unknown>;
+  return (
+    typeof chat.id === 'number' &&
+    typeof chat.type === 'string' &&
+    typeof from.id === 'number' &&
+    typeof member.status === 'string'
+  );
+}
+
 const LINK_COMMAND_PATTERN = /^\/link[@\w]*\s+([A-Za-z0-9]+)/;
+
+// Telegram deep-link format for /start with a payload:
+//   t.me/<bot>?start=<code>
+// lands in the bot as a /start command whose text is `/start <code>`
+// (in private chats only — groups ignore the start parameter). The
+// optional [@username] suffix is the same as /link's: Telegram adds
+// "@<bot_username>" when commands are sent via the UI in a chat that
+// has multiple bots, so we tolerate it but don't require it.
+const START_COMMAND_PATTERN = /^\/start(?:[@\w]*)?\s+([A-Za-z0-9]+)/;
 
 // Checkpoint 37: how long a member's activity counts as "the same
 // session" before another participation event is warranted. 30 minutes
@@ -149,6 +200,17 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       return;
     }
 
+    // Onboarding Step 3 / Step 4: the bot's own membership status
+    // changed in a group. Handled BEFORE the message branch because
+    // my_chat_member updates don't carry a `message` field at all,
+    // and dispatching to the message extractor would just fall
+    // through to the early return below. The shape check guards
+    // against malformed updates causing a TypeError.
+    if (isMyChatMemberUpdate(job.data.update.my_chat_member)) {
+      await handleMyChatMemberUpdate(job.data.update.my_chat_member);
+      return;
+    }
+
     const message = job.data.update.message;
     if (!message?.text) {
       // No text content — the rule-based extraction above has nothing to
@@ -161,9 +223,28 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       return;
     }
 
-    // Linking codes (and Member tracking) are only meaningful inside a
-    // group/supergroup, never a private DM to the bot.
+    // Onboarding Step 2 / Step 5: private-chat messages are either a
+    // /start with a code (Step 2) or arbitrary text (Step 5). The
+    // previous worker returned early on private chats — that predates
+    // the onboarding flow, which is the first feature that needs
+    // private-chat traffic. The original "private means drop" path is
+    // replaced by the explicit Step 2 / Step 5 dispatch below; the
+    // group-only paths (Member tracking, /link code) below this
+    // block are unchanged.
     if (message.chat.type === 'private') {
+      if (!message.from) {
+        return;
+      }
+      const startMatch = message.text.match(START_COMMAND_PATTERN);
+      if (startMatch?.[1]) {
+        await handleStartCommand(startMatch[1], message.from.id);
+      } else {
+        // Step 5: any other private-chat text gets the
+        // dashboard-redirect reply. This is the explicit
+        // "Kindred isn't a chatbot" boundary — no AI, no commands
+        // beyond /start, just point the user back to the dashboard.
+        await handlePrivateDefaultReply(message.from.id);
+      }
       return;
     }
 

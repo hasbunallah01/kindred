@@ -6,6 +6,10 @@ import { LinkingCodeDisplay } from '@/components/settings/LinkingCodeDisplay';
 interface LinkCodeResponse {
   code: string;
   expiresAt: string;
+  // Full deep link the Connect Telegram button should open. The
+  // /api/telegram/link route now returns this so the client doesn't
+  // need TELEGRAM_BOT_USERNAME in NEXT_PUBLIC_* env vars.
+  botUrl: string;
 }
 
 export function GroupLinkingCode() {
@@ -54,7 +58,20 @@ export function GroupLinkingCode() {
 
   return (
     <div className="flex flex-col items-center gap-3">
+      <a
+        href={data.botUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-950"
+      >
+        Connect Telegram
+      </a>
       <LinkingCodeDisplay code={data.code} expiresAt={data.expiresAt} />
+      <p className="text-xs text-neutral-500">
+        Press <strong>Start</strong> in Telegram, then add the bot to your group and grant admin
+        permissions. Or post{' '}
+        <code className="text-neutral-300">/link {data.code}</code> directly in the group.
+      </p>
       <button
         onClick={() => void fetchCode()}
         className="text-xs text-neutral-500 underline hover:text-neutral-300"
