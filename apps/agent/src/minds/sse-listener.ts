@@ -28,6 +28,24 @@ export function startMindsSseListener(
   onEvent: (data: string) => void,
   url: string = `${BASE_URL}${SUBSCRIBE_EVENTS_PATH}`,
 ): SseListenerHandle {
+  // Fail fast at the entry point if the only credential this listener
+  // actually needs is missing. Previously, the missing-key check lived
+  // inside connect() and silently returned — the listener looked
+  // started, PM2 reported healthy, and autonomous insights never
+  // arrived. Throwing here makes the failure visible at boot.
+  //
+  // MINDS_ID is intentionally not checked here: this listener only
+  // authenticates the SSE connection with the API key. MINDS_ID is
+  // already covered for the rest of the agent by
+  // apps/agent/src/index.ts validateRequiredEnv, which runs before
+  // this function is called from the normal startup path.
+  const rawApiKey = process.env.MINDS_BUILDER_API_KEY;
+  if (!rawApiKey) {
+    throw new Error(
+      'Minds SSE listener cannot start: MINDS_BUILDER_API_KEY is not set. ' +
+        'Configure it in the VPS environment and restart PM2.',
+    );
+  }
   let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
   let closedByCaller = false;
   let eventSource: EventSource | null = null;
