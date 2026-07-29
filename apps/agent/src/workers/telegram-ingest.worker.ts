@@ -287,7 +287,7 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
           type: event.type,
           payload: event.payload,
           occurredAt: event.occurredAt,
-        })),
+        })) as never,
       });
     }
   },
