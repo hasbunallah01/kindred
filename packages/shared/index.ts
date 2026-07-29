@@ -16,6 +16,15 @@ export const QUEUE_NAMES = {
   MIND_STANDING_CHECK: 'mind-standing-check',
   MILESTONE_SCANNER: 'milestone-scanner',
   LINKING_CODE_EXPIRY: 'linking-code-expiry',
+  // Checkpoint 53 / Telegram notification delivery: triggered after an
+  // autonomous Insight is persisted by the Minds SSE listener
+  // (apps/agent/src/minds/sse-listener.ts handleMindsSseEvent) to deliver
+  // a short Telegram DM to the community's creator. The producer (the
+  // SSE listener) and the consumer (this worker) live in the same app
+  // (apps/agent) — the queue exists so the Telegram send happens off
+  // the SSE hot path, and so a failed send can be retried by BullMQ
+  // without losing the Insight.
+  INSIGHT_NOTIFICATION: 'insight-notification',
 } as const;
 
 // The raw Telegram Update JSON is intentionally typed as `unknown` here —
@@ -25,6 +34,16 @@ export const QUEUE_NAMES = {
 export interface TelegramIngestJobData {
   update: unknown;
   receivedAt: string;
+}
+
+// Telegram notification delivery (Checkpoint 53): the SSE listener enqueues
+// a job per autonomous Insight it persists, identified by `insightId`.
+// Carrying only the id (rather than the full Insight payload) keeps the
+// queue contract minimal and means a stale job that runs after the
+// underlying Insight was updated still reads the freshest state from
+// the database.
+export interface InsightNotificationJobData {
+  insightId: string;
 }
 
 // Build Plan Checkpoint 38 / Blueprint Sections 5.3 & 14: whether ambiguous

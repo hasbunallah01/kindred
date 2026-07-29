@@ -1,6 +1,7 @@
 import { EventSource } from 'eventsource';
 import { prisma } from '@kindred/db';
 import { sanitizeEnvValue } from '@kindred/minds-client';
+import { enqueueInsightNotification } from '../workers/insight-notification.worker';
 
 // Persistent connection to SubscribeEvents on the official Hello Minds
 // Builder API (Blueprint Section 6.4/6.6). Node.js has no native
@@ -159,7 +160,7 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
     return;
   }
 
-  await prisma.insight.create({
+  const insight = await prisma.insight.create({
     data: {
       communityId: community.id,
       source: 'autonomous',
@@ -168,6 +169,24 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
   });
 
   console.log(`Created autonomous Insight for community ${community.id}.`);
+
+  // Checkpoint 53 / Telegram notification delivery: every autonomous
+  // Insight is the trigger for a notification. The actual delivery
+  // (preference checks, Telegram send, dedupe via Notification row)
+  // happens in apps/agent/src/workers/insight-notification.worker.ts
+  // — this listener's only job is to enqueue. Enqueue failures are
+  // caught and logged so a Telegram-side outage can't take the SSE
+  // listener down with it (the SSE listener is the single point
+  // through which every autonomous insight arrives; killing it would
+  // lose far more than one notification).
+  try {
+    await enqueueInsightNotification(insight.id);
+  } catch (error) {
+    console.error(
+      `Failed to enqueue insight-notification for insight ${insight.id}:`,
+      error,
+    );
+  }
 }
 
 // Convenience wrapper for apps/agent/src/index.ts — starts the listener

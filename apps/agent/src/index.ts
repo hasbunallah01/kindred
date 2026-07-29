@@ -22,6 +22,7 @@ import {
   linkingCodeExpiryWorker,
   scheduleLinkingCodeExpiry,
 } from './workers/linking-code-expiry.worker';
+import { insightNotificationWorker } from './workers/insight-notification.worker';
 import { startMindsInsightListener, type SseListenerHandle } from './minds/sse-listener';
 
 // Structural type for the bits of a BullMQ Worker we actually need
@@ -237,6 +238,14 @@ async function main(): Promise<void> {
   await scheduleLinkingCodeExpiry();
   console.log(`linking-code-expiry worker listening (queue: ${linkingCodeExpiryWorker.name})`);
 
+  // Checkpoint 53 / Telegram notification delivery: no scheduler here
+  // because this queue is not on a cron — it is fed on demand by the
+  // Minds SSE listener (apps/agent/src/minds/sse-listener.ts) every
+  // time an autonomous Insight is persisted. The worker just needs to
+  // be alive and listening; jobs arrive as the Mind generates
+  // insights.
+  console.log(`insight-notification worker listening (queue: ${insightNotificationWorker.name})`);
+
   // Capture the listener handle so graceful shutdown can call its
   // close() — previously the return value was discarded, so a
   // SIGTERM left the SSE socket to be torn down by process exit
@@ -254,6 +263,7 @@ async function main(): Promise<void> {
       mindStandingCheckWorker,
       milestoneScannerWorker,
       linkingCodeExpiryWorker,
+      insightNotificationWorker,
     ],
     mindsListener,
   );
