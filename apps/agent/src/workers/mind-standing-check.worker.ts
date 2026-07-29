@@ -4,7 +4,12 @@ import { prisma } from '@kindred/db';
 import { QUEUE_NAMES } from '@kindred/shared';
 import { sendMessage } from '@kindred/minds-client';
 
-const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+// REDIS_URL is guaranteed to be set by the agent's startup gate
+// (apps/agent/src/index.ts validateRequiredEnv), so no fallback here:
+// falling back to redis://localhost:6379 on a real VPS would silently
+// hang the worker trying to reach a Redis that isn't running. The
+// non-null assertion documents that contract.
+const connection = new IORedis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
 });
 

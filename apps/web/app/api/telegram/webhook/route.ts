@@ -8,7 +8,14 @@ import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
 // wrong for a producer sitting behind an HTTP request: if Redis is down,
 // an HTTP caller (Telegram, in this case) shouldn't hang forever waiting
 // on retries. Left at BullMQ/ioredis's own default.
-const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+//
+// REDIS_URL is required — no localhost fallback. The agent's startup
+// gate (apps/agent/src/index.ts validateRequiredEnv) covers the
+// agent's workers; this route runs on Vercel, which surfaces a
+// missing env var as a loud 500 at first request, not a silent hang.
+// Same risk class as forgetting any other Vercel env var (Telegram
+// webhook secret, etc.).
+const connection = new IORedis(process.env.REDIS_URL!);
 
 const telegramIngestQueue = new Queue<TelegramIngestJobData>(QUEUE_NAMES.TELEGRAM_INGEST, {
   connection,
