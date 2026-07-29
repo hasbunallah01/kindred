@@ -15,7 +15,13 @@ import {
 // expected to keep retrying indefinitely, unlike the webhook route's
 // producer connection (apps/web/app/api/telegram/webhook/route.ts),
 // which intentionally leaves this at the default.
-const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+//
+// REDIS_URL is guaranteed to be set by the agent's startup gate
+// (apps/agent/src/index.ts validateRequiredEnv), so no fallback here:
+// falling back to redis://localhost:6379 on a real VPS would silently
+// hang the worker trying to reach a Redis that isn't running. The
+// non-null assertion documents that contract.
+const connection = new IORedis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
 });
 
