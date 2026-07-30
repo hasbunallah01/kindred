@@ -262,11 +262,21 @@ model NotificationPreference {
 }
 
 model TelegramLinkRequest {
-  id          String    @id @default(uuid())
-  creatorId   String
-  code        String    @unique
-  expiresAt   DateTime
-  consumedAt  DateTime?
+  id                    String    @id @default(uuid())
+  creatorId             String
+  code                  String    @unique
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  // Captured when the creator presses /start <code> in a private DM with
+  // the bot (Build Plan: this fix). The /start happens BEFORE the bot is
+  // added to the Telegram group, so no Community row exists yet to host
+  // Community.creatorTelegramUserId — this column is the bridge between
+  // /start and the later /link, which reads it and writes it onto the
+  // Community at creation time. Nullable because the legacy /link path
+  // (creator posts the code directly in the group without /starting the
+  // bot first) still works and captures the ID from message.from.id at
+  // /link time instead.
+  creatorTelegramUserId BigInt?
 
   creator User @relation(fields: [creatorId], references: [id])
 }

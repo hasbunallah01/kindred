@@ -56,6 +56,18 @@ function isTelegramUpdate(value: unknown): value is TelegramUpdate {
 
 const LINK_COMMAND_PATTERN = /^\/link[@\w]*\s+([A-Za-z0-9]+)/;
 
+// Telegram renders the deep link t.me/<bot>?start=<code> as a /start
+// message in the private chat, with the deep-link payload as the first
+// argument after the command. Example: pressing Start with
+// ?start=ABCDEFGH produces the message text "/start ABCDEFGH".
+//
+// We deliberately keep this pattern permissive about the command form
+// (the bot username may be appended on group mentions, e.g. /start@KindredBot)
+// and about whether any payload is present at all — a bare /start with
+// no payload is the canonical "user just opened the chat" event and
+// should be ignored, not treated as a malformed linking attempt.
+const START_COMMAND_PATTERN = /^\/start(?:[@\w]*)?(?:\s+([A-Za-z0-9]+))?/;
+
 // Checkpoint 37: how long a member's activity counts as "the same
 // session" before another participation event is warranted. 30 minutes
 // is a reasonable default for a chat community — long enough that an
@@ -83,11 +95,22 @@ async function handleLinkingCode(
   }
 
   const telegramChatId = BigInt(chatId);
-  // Whoever posts a valid /link code is assumed to be the creator setting
-  // up the connection — captured now since it's the only point at which
-  // we ever learn this identity (Checkpoint 36).
+  // Resolve the creator's Telegram user ID. Preferred source is the
+  // TelegramLinkRequest.creatorTelegramUserId captured at /start time
+  // (Build Plan: this fix) — the new onboarding flow makes /start the
+  // canonical place to learn the creator's identity, and the value lives
+  // on the link request because no Community row exists yet at /start
+  // time. Fall back to the legacy /link-time sender (Checkpoint 36) so
+  // creators who skip /start (old flow, bots that pre-date this fix)
+  // still get a Community.creatorTelegramUserId — both paths land on
+  // the same field and the notification worker reads that field, not
+  // either of these two paths.
   const creatorTelegramUserId =
-    fromTelegramUserId !== undefined ? BigInt(fromTelegramUserId) : undefined;
+    linkRequest.creatorTelegramUserId !== null && linkRequest.creatorTelegramUserId !== undefined
+      ? linkRequest.creatorTelegramUserId
+      : fromTelegramUserId !== undefined
+        ? BigInt(fromTelegramUserId)
+        : undefined;
 
   const [community] = await prisma.$transaction([
     prisma.community.upsert({
@@ -142,6 +165,52 @@ async function handleLinkingCode(
   }
 }
 
+// Captures the creator's Telegram user ID at /start time. The deep link
+// t.me/<bot>?start=<code> produces a "/start <code>" message in the
+// creator's private chat with the bot. At that moment the Community
+// doesn't exist yet (the bot hasn't been added to the group), so we
+// persist the ID on the TelegramLinkRequest itself — when /link runs in
+// the group later, handleLinkingCode reads it back and writes it onto
+// Community.creatorTelegramUserId, which is what the notification
+// worker will read.
+//
+// Mirrors the lookup rules of handleLinkingCode (silently ignore on
+// unknown/expired/consumed) so a stray /start with a bad code is the
+// same shape of no-op on both code paths, and re-/start is idempotent:
+// re-running /start on an already-known request refreshes the stored
+// Telegram user ID with whatever the latest message.from.id says,
+// which is the right behavior if the creator re-runs onboarding from
+// a different Telegram account.
+async function handleStartCommand(
+  code: string | undefined,
+  fromTelegramUserId: number | undefined,
+): Promise<void> {
+  if (!code) {
+    return; // Bare /start with no deep-link payload — just "user opened chat".
+  }
+  if (fromTelegramUserId === undefined) {
+    return; // No sender — nothing to attribute.
+  }
+
+  const linkRequest = await prisma.telegramLinkRequest.findUnique({
+    where: { code: code.toUpperCase() },
+  });
+  if (!linkRequest) {
+    return; // Unknown code — same shape as handleLinkingCode's silent ignore.
+  }
+  if (linkRequest.consumedAt) {
+    return; // Already used by a /link in the group — the ID was already captured.
+  }
+  if (linkRequest.expiresAt < new Date()) {
+    return; // Expired.
+  }
+
+  await prisma.telegramLinkRequest.update({
+    where: { id: linkRequest.id },
+    data: { creatorTelegramUserId: BigInt(fromTelegramUserId) },
+  });
+}
+
 export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
   QUEUE_NAMES.TELEGRAM_INGEST,
   async (job: Job<TelegramIngestJobData>) => {
@@ -161,9 +230,19 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       return;
     }
 
-    // Linking codes (and Member tracking) are only meaningful inside a
-    // group/supergroup, never a private DM to the bot.
+    // /start is the only command this worker handles in a private DM to
+    // the bot. It's the entry point of the new onboarding flow (Build
+    // Plan: this fix) — the creator presses the deep link
+    // t.me/<bot>?start=<code>, the bot receives the /start here, and we
+    // persist creatorTelegramUserId on the link request so it's ready
+    // for the later /link in the group. Anything else in a private chat
+    // is out of scope (Blueprint Section 5.4: no private message
+    // ingestion).
     if (message.chat.type === 'private') {
+      const startMatch = message.text.match(START_COMMAND_PATTERN);
+      if (startMatch) {
+        await handleStartCommand(startMatch[1], message.from?.id);
+      }
       return;
     }
 
@@ -254,8 +333,11 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
 
     // Checkpoint 36: was this message the creator replying to a specific
     // member? Requires community.creatorTelegramUserId to have been
-    // captured already (only happens once a /link message has been
-    // processed — see handleLinkingCode above).
+    // captured already. The /link message that created this Community
+    // is the canonical place (see handleLinkingCode above); for the new
+    // onboarding flow, that value is sourced from
+    // TelegramLinkRequest.creatorTelegramUserId populated at /start
+    // time (handleStartCommand), not from the /link sender.
     const replyToTelegramUserId = message.reply_to_message?.from
       ? BigInt(message.reply_to_message.from.id)
       : undefined;

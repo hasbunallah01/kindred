@@ -1,0 +1,12 @@
+-- Persist the creator's Telegram user ID on the link request so it's
+-- available at /link time even though /start (in the creator's private
+-- chat with the bot) happens before the Community row exists.
+--
+-- Nullable because:
+--   - rows created before this migration won't have the column
+--     populated (handled by the legacy /link path that captures the
+--     ID from message.from.id at /link time)
+--   - re-issuing a /start with the same code overwrites the value
+--     (see apps/agent/src/workers/telegram-ingest.worker.ts
+--     handleStartCommand)
+ALTER TABLE "TelegramLinkRequest" ADD COLUMN "creatorTelegramUserId" BIGINT;
