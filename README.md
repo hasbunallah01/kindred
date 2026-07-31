@@ -64,6 +64,21 @@ OpenAI is used only for subordinate preprocessing where necessary and never repl
 
 **Stack:** Next.js · Tailwind CSS · TypeScript · Better Auth · Resend · PostgreSQL (Neon) · Prisma · Vercel (web) · VPS/PM2 (agent runtime: Telegram bot, BullMQ, Redis) · Telegram Bot API · **Minds by Animoca Brands**
 
+## Development Freeze — Backend
+
+> **🚧 Backend feature development is FROZEN.**
+>
+> From this point onward:
+>
+> - **Do NOT add new backend features** to `apps/agent/`, `apps/web/` (server routes only — UI is fair game), `packages/`, or any worker, queue, cron, or infrastructure path.
+> - **Only fix backend bugs** discovered during testing.
+> - **All new development effort shifts to the frontend** (`apps/web/` UI, `apps/web/components/`, `apps/web/app/` client components, design, UX).
+> - Any backend change that is not a direct bug fix requires **explicit user request** before it is made.
+>
+> This is a hard rule. If a task seems to require backend work, stop and ask first.
+>
+> See **[AGENTS.md](./AGENTS.md)** for the full directive that all coding agents in this repo must follow.
+
 ## Privacy
 
 - Kindred never spies. It observes only **public conversations** in communities where it has been added.
