@@ -220,11 +220,12 @@ function Nav() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
       <nav className="mx-auto flex h-16 max-w-marketing items-center justify-between px-6 sm:px-8">
-        <a href="#top" className="flex items-center gap-2">
-          <KindredMark className="h-7 w-7" />
-          <span className="text-lg font-bold tracking-wide text-text-primary">
-            Kindred
-          </span>
+        <a href="#top" className="flex items-center gap-2.5">
+          <img
+            src="/brand/kindred-logo.png"
+            alt="Kindred Mind"
+            className="h-7 w-auto"
+          />
         </a>
 
         <ul className="hidden items-center gap-8 md:flex">
@@ -338,7 +339,14 @@ function DashboardMockup() {
 
       <div className="grid grid-cols-[44px_1fr]">
         <aside className="flex flex-col items-center gap-4 border-r border-border bg-surface py-4">
-          <KindredMark className="h-5 w-5" />
+          {/* Dashboard mockup brand chip — a stylized "K" in the Kindred
+              mark colors. The full wordmark logo (rendered in the real nav
+              and footer above and below this section) is too wide for the
+              44px sidebar; this chip carries the same color identity at
+              icon size. */}
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-brand-primary to-coral text-[11px] font-bold text-white">
+            K
+          </span>
           <span className="h-1 w-1 rounded-full bg-text-muted" />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
@@ -776,11 +784,12 @@ function Footer() {
       <div className="mx-auto max-w-marketing px-6 py-12 sm:px-8">
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
           <div className="col-span-2 sm:col-span-1">
-            <a href="#top" className="flex items-center gap-2">
-              <KindredMark className="h-7 w-7" />
-              <span className="text-lg font-bold tracking-wide text-text-primary">
-                Kindred
-              </span>
+            <a href="#top" className="flex items-center gap-2.5">
+              <img
+                src="/brand/kindred-logo.png"
+                alt="Kindred Mind"
+                className="h-7 w-auto"
+              />
             </a>
             <p className="mt-3 max-w-xs text-sm text-text-secondary">
               Never let a loyal fan become a forgotten fan. Built with Minds.
@@ -820,36 +829,6 @@ function Footer() {
         </div>
       </div>
     </footer>
-  );
-}
-
-// The brand mark used in the nav and footer. Inline SVG (no external
-// dependency, easy to recolor) — the two figures and the heart shape
-// from the official Kindred logo, abstracted for crispness at small
-// sizes. Edit the colors here to rebrand.
-function KindredMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 32 32"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="7" r="3" fill="#5B3CC4" />
-      <path
-        d="M5 26c0-3.3 2.7-6 6-6s6 2.7 6 6v2H5v-2z"
-        fill="#5B3CC4"
-      />
-      <circle cx="22" cy="9" r="2.5" fill="#FF7A6B" />
-      <path
-        d="M16 24c0-3.3 2.7-6 6-6s6 2.7 6 6v2H16v-2z"
-        fill="#FF7A6B"
-      />
-      <path
-        d="M16 22c-1 0-2-.7-2-2 0-1.5 1.2-2.5 2-2.5s2 1 2 2.5c0 1.3-1 2-2 2z"
-        fill="#F6B73C"
-      />
-    </svg>
   );
 }
 
