@@ -339,14 +339,17 @@ function DashboardMockup() {
 
       <div className="grid grid-cols-[44px_1fr]">
         <aside className="flex flex-col items-center gap-4 border-r border-border bg-surface py-4">
-          {/* Dashboard mockup brand chip — a stylized "K" in the Kindred
-              mark colors. The full wordmark logo (rendered in the real nav
-              and footer above and below this section) is too wide for the
-              44px sidebar; this chip carries the same color identity at
-              icon size. */}
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-brand-primary to-coral text-[11px] font-bold text-white">
-            K
-          </span>
+          {/* Dashboard mockup brand mark — the icon-only crop of the
+              official Kindred logo. The full wordmark (used in the real
+              nav and footer above and below this section) is too wide for
+              the 44px sidebar; this icon-only variant carries the same
+              brand at sidebar size. */}
+          <img
+            src="/brand/kindred-mark.png"
+            alt=""
+            aria-hidden="true"
+            className="h-5 w-auto"
+          />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
