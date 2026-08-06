@@ -317,20 +317,143 @@ async function handlePrivateDefaultReply(fromTelegramUserId: number): Promise<vo
 //
 // The flow the spec mandates:
 //
-//   1. Bot joined a group → confirm a Community row exists for this
-//      chat (i.e. the creator has already run /link in the group, OR
-//      the link request was pre-associated with a chat id — neither
-//      mechanism exists today, so today this only resolves after
-//      /link). If found, DM the creator asking for admin promotion.
-//      This is the "verify this onboarding belongs to the creator"
-//      guard in the spec — without a Community row, we cannot know
-//      which creator the group belongs to, and we must NOT DM a
-//      random Telegram user.
+//   1. Bot joined a group → bind the chat to the creator's pending
+//      TelegramLinkRequest (the one captured at /start time) if no
+//      Community row already exists for this chat, then DM the creator
+//      asking for admin promotion. The "this onboarding belongs to the
+//      creator" check is now: the user who added the bot
+//      (`update.from.id`) must match the captured
+//      `creatorTelegramUserId` of an unconsumed, non-expired link
+//      request — that means we only ever bind chats to a creator who
+//      has actually /start-ed the bot, and we never DM a random user
+//      who happens to add the bot to some unrelated group.
 //
 //   2. Bot promoted to admin → activate the Community, create the
 //      Mind conversation if it isn't already created (the legacy
 //      /link path may have already done this — we don't redo work),
 //      and DM the creator a success message.
+//
+// /link compatibility is preserved: handleLinkingCode still creates
+// the Community directly. If /link wins the race, this handler sees
+// the existing Community and takes the existing path. If my_chat_member
+// wins the race, the /link that arrives later is a no-op (the
+// `consumedAt` guard on handleLinkingCode rejects it). Either order
+// ends in the same final state.
+
+// Looks up the pending TelegramLinkRequest that should own the bind
+// for this `my_chat_member` event. Returns null if no such request
+// exists — the caller then logs and skips (same shape as
+// handleStartCommand's "unknown code" silent-ignore).
+//
+// Match rule: the user who added the bot to the group
+// (`update.from.id`) must equal the captured
+// `creatorTelegramUserId` of a TelegramLinkRequest that is
+//   - not consumed (consumedAt is null), and
+//   - not expired (expiresAt > now).
+// This is the "verify this onboarding belongs to the creator" guard
+// the spec requires: we only ever bind a chat to a creator who
+// explicitly /start-ed the bot.
+//
+// If multiple unconsumed requests match (a creator pressed /start
+// twice with different codes, then added the bot to two different
+// groups), we pick the most recently created one — the assumption is
+// a creator in onboarding has exactly one in-flight request, and the
+// latest one is the one they intend to use.
+async function findPendingLinkRequestFor(
+  telegramUserId: bigint,
+): Promise<{ id: string; creatorId: string } | null> {
+  const request = await prisma.telegramLinkRequest.findFirst({
+    where: {
+      creatorTelegramUserId: telegramUserId,
+      consumedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { expiresAt: 'desc' },
+    select: { id: true, creatorId: true },
+  });
+  return request;
+}
+
+// Atomically binds a Telegram group chat to a creator's pending
+// TelegramLinkRequest, creating the Community row. Returns the new
+// (or pre-existing) Community, the creator's Telegram user id
+// (for DMing), and a flag indicating whether this call did the
+// bind vs losing a race to /link.
+//
+// Race safety: the Community row has a unique constraint on
+// telegramChatId, so we upsert. If /link beat us to the punch, the
+// upsert's update branch fires and we read back whatever
+// /link stored (which is the correct state). If we beat /link, the
+// create branch fires and we mark the link request consumed —
+// handleLinkingCode's consumedAt check then rejects any /link that
+// arrives later.
+//
+// Returns null if no pending request matches `addedByTelegramUserId`
+// — the caller should skip the rest of the flow in that case (no
+// creator to DM, no group to bind to).
+async function bindChatToCreator(
+  telegramChatId: bigint,
+  chatTitle: string,
+  addedByTelegramUserId: bigint,
+): Promise<{ communityId: string; creatorTelegramUserId: bigint; bindHappened: boolean } | null> {
+  const linkRequest = await findPendingLinkRequestFor(addedByTelegramUserId);
+  if (!linkRequest) {
+    return null;
+  }
+
+  // Upsert the Community. The `update` branch is reached when /link
+  // already created the row — in that case we leave the existing
+  // creatorId and creatorTelegramUserId alone (a /link-style binding
+  // is the older, more explicit ceremony and we trust it over the
+  // my_chat_member inference). The `create` branch is the normal
+  // path: bind to the link request's creator.
+  const community = await prisma.community.upsert({
+    where: { telegramChatId },
+    create: {
+      creatorId: linkRequest.creatorId,
+      telegramChatId,
+      telegramChatTitle: chatTitle,
+      status: 'active',
+      creatorTelegramUserId: addedByTelegramUserId,
+    },
+    update: {
+      // No-op update — the row already exists. Status will be
+      // transitioned to 'active' by the caller (admin branch) or
+      // left as-is (member branch). We deliberately do NOT overwrite
+      // creatorId/creatorTelegramUserId here: a row created by
+      // /link is the authoritative binding, and we must not clobber
+      // it with a different creator.
+      telegramChatTitle: chatTitle,
+    },
+  });
+
+  // Mark the link request consumed. Done outside the upsert because
+  // the link request's PK is independent of the Community row, and
+  // we want to consume it exactly once across both the
+  // my_chat_member and the /link paths.
+  //
+  // If the Community already existed (bindHappened=false), the
+  // request might still be unconsumed if /link didn't go through
+  // this code path — but that's only possible if /link created the
+  // Community via the older code path that doesn't consume the
+  // request... actually, looking at handleLinkingCode, it DOES
+  // consume the request inside the same transaction. So a
+  // pre-existing Community + unconsumed request is an inconsistent
+  // state. We still try to consume defensively — the
+  // `where: { consumedAt: null }` guard means we won't accidentally
+  // re-consume a request that was consumed by /link.
+  const consumeResult = await prisma.telegramLinkRequest.updateMany({
+    where: { id: linkRequest.id, consumedAt: null },
+    data: { consumedAt: new Date() },
+  });
+
+  return {
+    communityId: community.id,
+    creatorTelegramUserId: addedByTelegramUserId,
+    bindHappened: consumeResult.count > 0,
+  };
+}
+
 async function handleMyChatMember(update: NonNullable<TelegramUpdate['my_chat_member']>): Promise<void> {
   // Only group / supergroup my_chat_member updates are relevant —
   // channels are out of scope (spec: "Groups only"). The bot should
@@ -349,16 +472,42 @@ async function handleMyChatMember(update: NonNullable<TelegramUpdate['my_chat_me
   }
 
   const telegramChatId = BigInt(update.chat.id);
-  const community = await prisma.community.findUnique({ where: { telegramChatId } });
+  const addedByTelegramUserId = BigInt(update.from.id);
+
+  // First, look for a Community row that already exists. This is the
+  // case where /link beat us to it (legacy flow), OR where a
+  // previous my_chat_member already bound this chat. Either way, the
+  // row carries the authoritative creator binding.
+  let community = await prisma.community.findUnique({ where: { telegramChatId } });
+
   if (!community) {
-    // No Community row for this group. The spec requires us to verify
-    // the onboarding belongs to the creator — without a Community row
-    // we cannot make that determination, and DMing an arbitrary user
-    // would be both wrong and a privacy violation. Log and skip.
-    console.log(
-      `my_chat_member: no Community for chat ${telegramChatId} (status=${status}); skipping DM.`,
+    // No Community yet — this is the deeplink-only path. Bind the
+    // chat to the user who added the bot, IF that user is the
+    // creator of a pending /start-ed TelegramLinkRequest. If they
+    // aren't (someone unrelated added the bot to a group), we
+    // can't safely DM anyone and we skip the rest.
+    const bind = await bindChatToCreator(
+      telegramChatId,
+      update.chat.title ?? 'Untitled community',
+      addedByTelegramUserId,
     );
-    return;
+    if (!bind) {
+      console.log(
+        `my_chat_member: no pending link request for Telegram user ${addedByTelegramUserId} (chat ${telegramChatId}); skipping DM.`,
+      );
+      return;
+    }
+    // Re-read so subsequent code operates on a single, fresh
+    // Community object (the bind just created it).
+    community = await prisma.community.findUnique({ where: { id: bind.communityId } });
+    if (!community) {
+      // Shouldn't happen — we just created it — but if a concurrent
+      // delete raced us, bail out rather than DMing into a void.
+      console.error(
+        `my_chat_member: bind created Community ${bind.communityId} but it disappeared; skipping.`,
+      );
+      return;
+    }
   }
 
   if (!community.creatorTelegramUserId) {
