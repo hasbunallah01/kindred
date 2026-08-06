@@ -340,21 +340,17 @@ function DashboardMockup() {
       <div className="grid grid-cols-[44px_1fr]">
         <aside className="flex flex-col items-center gap-4 border-r border-border bg-surface py-4">
           {/* Dashboard mockup brand mark — the icon-only crop of the
-              official Kindred logo, presented in a white circular badge
-              to match the official avatar treatment. The full wordmark
-              (used in the real nav and footer above and below this section)
-              is too wide for the 44px sidebar; this icon-only variant
-              carries the same brand at sidebar size. The circular white
-              background is a CSS treatment, not a file modification —
-              the source-of-truth logo asset is unchanged. */}
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-border">
-            <img
-              src="/brand/kindred-mark.png"
-              alt=""
-              aria-hidden="true"
-              className="h-5 w-5 object-contain"
-            />
-          </span>
+              official Kindred logo. The full wordmark (used in the real
+              nav and footer above and below this section) is too wide for
+              the 44px sidebar; this icon-only variant carries the same
+              brand at sidebar size. Rendered as-is on a transparent
+              background — the artwork is square, not circular. */}
+          <img
+            src="/brand/kindred-mark.png"
+            alt=""
+            aria-hidden="true"
+            className="h-7 w-auto"
+          />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
