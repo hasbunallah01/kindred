@@ -9,15 +9,14 @@ import {
   MessageSquare,
   Send,
   Sparkles,
-  TrendingUp,
   Users,
 } from 'lucide-react';
 
 // Per-route metadata — overrides the root layout metadata for this page only.
 export const metadata: Metadata = {
-  title: 'Kindred Mind — relationship memory for Telegram communities',
+  title: 'Kindred Mind: relationship memory for Telegram communities',
   description:
-    'Kindred Mind quietly observes your Telegram community, remembers relationships, and helps creators build stronger connections — without becoming another chatbot.',
+    'Kindred Mind quietly observes your Telegram community, remembers relationships, and helps creators build stronger connections. No chatbot. No noise. Just understanding.',
 };
 
 // =====================================================================
@@ -33,7 +32,6 @@ export const metadata: Metadata = {
 // =====================================================================
 
 const NAV_LINKS = [
-  { href: '#features', label: 'Features' },
   { href: '#how-it-works', label: 'How it Works' },
   { href: '#faq', label: 'FAQ' },
 ];
@@ -93,39 +91,6 @@ const DASHBOARD_CALLOUTS = [
   'Relationship Events',
 ];
 
-const FEATURES = [
-  {
-    icon: Brain,
-    title: 'Relationship Memory',
-    body: 'Kindred Mind remembers people — not messages.',
-  },
-  {
-    icon: Sparkles,
-    title: 'Autonomous Insights',
-    body: 'Important moments appear automatically.',
-  },
-  {
-    icon: MessageSquare,
-    title: 'Ask Kindred',
-    body: 'Ask anything about your community.',
-  },
-  {
-    icon: Bell,
-    title: 'Telegram Notifications',
-    body: 'Short notifications. Full details stay on your dashboard.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Community Timeline',
-    body: 'See relationships evolve over time.',
-  },
-  {
-    icon: Sparkles,
-    title: 'Built with Minds',
-    body: 'Powered by persistent AI memory.',
-  },
-];
-
 const ASK_EXAMPLES = [
   'Who quietly returned this month?',
   'Who has been consistently supporting us?',
@@ -171,7 +136,7 @@ const FAQS = [
   },
   {
     q: 'Can I disable notifications?',
-    a: 'Yes. Every channel — dashboard, Telegram DM, email — can be toggled independently, with per-channel quiet hours.',
+    a: 'Yes. Every channel (dashboard, Telegram DM, email) can be toggled independently, with per-channel quiet hours.',
   },
 ];
 
@@ -179,7 +144,6 @@ const FOOTER_COLUMNS = [
   {
     title: 'Product',
     links: [
-      { href: '#features', label: 'Features' },
       { href: '#how-it-works', label: 'How it Works' },
       { href: '#faq', label: 'FAQ' },
     ],
@@ -221,10 +185,18 @@ function Nav() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
       <nav className="mx-auto flex h-16 max-w-marketing items-center justify-between px-6 sm:px-8">
         <a href="#top" className="flex items-center gap-2.5">
+          {/* Mobile: the icon badge only. Tablet/desktop: the full
+              wordmark. Same href, same alt text; the swap is purely
+              visual so the figures don't get crushed on narrow screens. */}
+          <img
+            src="/brand/kindred-badge.png"
+            alt="Kindred Mind"
+            className="h-7 w-7 sm:hidden"
+          />
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-7 w-auto"
+            className="hidden h-7 w-auto sm:block"
           />
         </a>
 
@@ -281,8 +253,8 @@ function Hero() {
 
           <p className="mt-6 max-w-xl text-base leading-relaxed text-text-secondary sm:text-lg">
             Kindred Mind quietly observes your Telegram community, remembers
-            relationships, discovers important moments, and helps you build
-            stronger connections — without becoming another chatbot.
+            relationships, and discovers important moments. No chatbot.
+            No noise. Just a clearer sense of the people behind the group.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -449,7 +421,7 @@ function TrustedBy() {
     <section className="border-y border-border bg-surface py-10">
       <div className="mx-auto max-w-marketing px-6 sm:px-8">
         <p className="text-center text-xs font-medium uppercase tracking-wider text-text-secondary">
-          Trusted by community builders
+          Built with
         </p>
         <ul className="mt-6 grid grid-cols-2 items-center justify-items-center gap-x-6 gap-y-4 sm:grid-cols-4">
           {TRUSTED_BY.map((brand) => (
@@ -548,12 +520,10 @@ function DashboardShowcase() {
   return (
     <section className="mx-auto w-full max-w-marketing px-6 py-24 sm:px-8">
       <p className="text-center text-xs font-semibold uppercase tracking-wider text-brand-primary">
-        Your community, remembered
+        Your creator dashboard
       </p>
       <h2 className="mt-3 text-center text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
-        Everything your community remembers.
-        <br />
-        In one beautiful dashboard.
+        Inside Kindred Mind
       </h2>
 
       <div className="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1.4fr]">
@@ -573,40 +543,6 @@ function DashboardShowcase() {
 
         <div className="lg:-rotate-1">
           <DashboardMockup />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FeaturesGrid() {
-  return (
-    <section id="features" className="bg-surface py-24">
-      <div className="mx-auto max-w-marketing px-6 sm:px-8">
-        <p className="text-center text-xs font-semibold uppercase tracking-wider text-brand-primary">
-          Powerful features for stronger relationships
-        </p>
-        <h2 className="mt-3 text-center text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
-          Built for creators who care about people
-        </h2>
-
-        <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map(({ icon: Icon, title, body }) => (
-            <div
-              key={title}
-              className="rounded-card border border-border bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
-            >
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface">
-                <Icon className="h-5 w-5 text-brand-primary" />
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-text-primary">
-                {title}
-              </h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
-                {body}
-              </p>
-            </div>
-          ))}
         </div>
       </div>
     </section>
@@ -788,9 +724,14 @@ function Footer() {
           <div className="col-span-2 sm:col-span-1">
             <a href="#top" className="flex items-center gap-2.5">
               <img
+                src="/brand/kindred-badge.png"
+                alt="Kindred Mind"
+                className="h-7 w-7 sm:hidden"
+              />
+              <img
                 src="/brand/kindred-logo.png"
                 alt="Kindred Mind"
-                className="h-7 w-auto"
+                className="hidden h-7 w-auto sm:block"
               />
             </a>
             <p className="mt-3 max-w-xs text-sm text-text-secondary">
@@ -847,7 +788,6 @@ export default function HomePage() {
       <Problem />
       <HowItWorks />
       <DashboardShowcase />
-      <FeaturesGrid />
       <AskKindred />
       <BuiltFor />
       <FAQ />
