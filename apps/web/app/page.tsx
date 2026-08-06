@@ -265,16 +265,16 @@ function Hero() {
   return (
     <section
       id="top"
-      className="mx-auto w-full max-w-marketing px-6 pb-24 pt-16 sm:px-8 sm:pt-20 lg:pb-32 lg:pt-24"
+      className="mx-auto w-full max-w-marketing px-6 pb-24 pt-10 sm:px-8 sm:pt-20 lg:pb-32 lg:pt-24"
     >
       <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2 lg:gap-16">
         <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-secondary">
-            <Sparkles className="h-3.5 w-3.5 text-coral" />
+          <span className="inline-flex w-fit max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-text-secondary sm:px-3 sm:text-xs">
+            <Sparkles className="h-3 w-3 shrink-0 text-coral sm:h-3.5 sm:w-3.5" />
             AI relationship memory for Telegram communities
           </span>
 
-          <h1 className="mt-6 text-4xl font-bold leading-[1.1] tracking-tight text-text-primary sm:text-5xl lg:text-[3.4rem]">
+          <h1 className="mt-5 text-[1.75rem] font-bold leading-[1.15] tracking-tight text-text-primary sm:mt-6 sm:text-5xl sm:leading-[1.1] lg:text-[3.4rem]">
             Never let your most loyal community members become{' '}
             <span className="text-coral">forgotten</span>.
           </h1>
