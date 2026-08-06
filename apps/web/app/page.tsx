@@ -339,17 +339,15 @@ function DashboardMockup() {
 
       <div className="grid grid-cols-[44px_1fr]">
         <aside className="flex flex-col items-center gap-4 border-r border-border bg-surface py-4">
-          {/* Dashboard mockup brand mark — the icon-only crop of the
-              official Kindred logo. The full wordmark (used in the real
-              nav and footer above and below this section) is too wide for
-              the 44px sidebar; this icon-only variant carries the same
-              brand at sidebar size. Rendered as-is on a transparent
-              background — the artwork is square, not circular. */}
+          {/* Dashboard mockup brand badge — the official Kindred mark
+              (figure mark on white circular badge, gold sparkle). The
+              full wordmark (used in the real nav and footer above and
+              below this section) is too wide for the 44px sidebar; this
+              badge is the official icon-only variant. */}
           <img
-            src="/brand/kindred-mark.png"
-            alt=""
-            aria-hidden="true"
-            className="h-7 w-auto"
+            src="/brand/kindred-badge.png"
+            alt="Kindred Mind"
+            className="h-7 w-7"
           />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
           <span className="h-1 w-1 rounded-full bg-text-muted" />
