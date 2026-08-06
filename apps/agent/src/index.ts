@@ -52,6 +52,7 @@ interface ClosableWorker {
 const REQUIRED_ENV_VARS = [
   'DATABASE_URL',
   'REDIS_URL',
+  'TELEGRAM_BOT_TOKEN',
   'MINDS_BUILDER_API_KEY',
   'MINDS_ID',
 ] as const;

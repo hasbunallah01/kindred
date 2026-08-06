@@ -3,12 +3,20 @@ import IORedis from 'ioredis';
 import { prisma } from '@kindred/db';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
 import { createConversation, setStandingInstructions } from '@kindred/minds-client';
+import { sendMessage } from '../telegram/bot-api';
 import {
   extractEvents,
   detectCreatorInteractionTarget,
   buildCreatorInteractionEvent,
   classifyAmbiguousMessage,
 } from '../telegram/extract-events';
+
+// Dashboard URL referenced by the "Kindred conversations happen in your
+// dashboard" private-message redirect (Step 5 of the P0 onboarding
+// flow). Hard-coded because the agent runs in a context that has no
+// Next.js public env vars — and the URL is also documented in the spec
+// for this task. If the production URL ever moves, change it here.
+const DASHBOARD_URL = 'https://kindred.haybee.xyz/dashboard';
 
 // maxRetriesPerRequest: null is required by BullMQ for Worker connections
 // (it throws otherwise) — a worker is a background process that's
@@ -28,6 +36,10 @@ const connection = new IORedis(process.env.REDIS_URL!, {
 // Minimal shape of a Telegram Update — only the fields this worker
 // actually reads. Full message processing (join/first-interaction,
 // creator-interaction, participation) is Checkpoints 35-37, not here.
+//
+// `my_chat_member` is the new shape this worker added for the P0
+// onboarding flow (Steps 3 and 4) — Telegram sends it whenever the
+// bot itself is added to, promoted in, or removed from a group chat.
 interface TelegramUpdate {
   message?: {
     text?: string;
@@ -45,6 +57,23 @@ interface TelegramUpdate {
     reply_to_message?: {
       from?: {
         id: number;
+      };
+    };
+  };
+  my_chat_member?: {
+    chat: {
+      id: number;
+      type: string;
+      title?: string;
+    };
+    from: {
+      id: number;
+    };
+    new_chat_member: {
+      status: string;
+      user: {
+        id: number;
+        username?: string;
       };
     };
   };
@@ -67,6 +96,35 @@ const LINK_COMMAND_PATTERN = /^\/link[@\w]*\s+([A-Za-z0-9]+)/;
 // no payload is the canonical "user just opened the chat" event and
 // should be ignored, not treated as a malformed linking attempt.
 const START_COMMAND_PATTERN = /^\/start(?:[@\w]*)?(?:\s+([A-Za-z0-9]+))?/;
+
+// Welcome message sent in the private DM after the creator presses Start
+// with a valid linking code (P0 onboarding Step 2). The content is
+// deliberately identical to the spec's reference copy — the wording was
+// reviewed and frozen at the time the spec was approved, and changing
+// it here without re-approving would diverge from the spec.
+const WELCOME_MESSAGE =
+  '👋 Welcome to Kindred.\n\n' +
+  "You're almost done.\n\n" +
+  '1. Add me to your Telegram Group.\n\n' +
+  '2. Promote me to Administrator.\n\n' +
+  "3. I'll quietly observe your community and remember relationships.\n\n" +
+  "I never chat in your group.\n\n" +
+  "After you've added me, I'll finish the connection automatically.";
+
+const ADMIN_PROMOTION_REQUEST_MESSAGE = (groupName: string) =>
+  `I joined ${groupName}.\n\n` +
+  'Please promote me to Administrator so I can begin monitoring your community.';
+
+const ONBOARDING_SUCCESS_MESSAGE = (groupName: string) =>
+  '✅ Kindred is now connected.\n\n' +
+  'Monitoring:\n' +
+  `${groupName}\n\n` +
+  'Your community is now being remembered.\n\n' +
+  'Future insights will appear in your dashboard.';
+
+const PRIVATE_DEFAULT_REPLY =
+  'Kindred conversations happen inside your dashboard.\n\n' +
+  `Open:\n${DASHBOARD_URL}`;
 
 // Checkpoint 37: how long a member's activity counts as "the same
 // session" before another participation event is warranted. 30 minutes
@@ -181,6 +239,14 @@ async function handleLinkingCode(
 // Telegram user ID with whatever the latest message.from.id says,
 // which is the right behavior if the creator re-runs onboarding from
 // a different Telegram account.
+//
+// P0 onboarding Step 2 — after persisting the creator's Telegram user
+// ID, send the welcome message. Sending is best-effort: a failure to
+// deliver the welcome text (Telegram outage, bad token, etc.) is
+// logged but does NOT block the persistence — the creator's identity
+// capture is the primary record, and the welcome message is purely
+// user-facing copy. A failed welcome can be retried by re-/starting,
+// which re-runs this same handler.
 async function handleStartCommand(
   code: string | undefined,
   fromTelegramUserId: number | undefined,
@@ -209,12 +275,161 @@ async function handleStartCommand(
     where: { id: linkRequest.id },
     data: { creatorTelegramUserId: BigInt(fromTelegramUserId) },
   });
+
+  try {
+    await sendMessage({ chatId: fromTelegramUserId, text: WELCOME_MESSAGE });
+  } catch (error) {
+    console.error(
+      'Failed to send welcome DM after /start (creator Telegram ID was still persisted):',
+      error,
+    );
+  }
+}
+
+// P0 onboarding Step 5 — any private message that isn't a /start command
+// (and isn't an internal command like /help the bot doesn't actually
+// expose) gets the dashboard-redirect reply. The bot is deliberately not
+// a chatbot: no AI, no LLM, no conversation, per the spec. Sending is
+// best-effort like the welcome message — if it fails, the user will
+// notice the next time they message the bot, but no data is at risk.
+//
+// Skipped for non-private chats: in groups the bot must never reply to
+// any non-command message (Blueprint Section 5.3: groups are observed
+// silently). The chat.type === 'private' check is the only guard needed
+// because the caller (handlePrivateMessage below) is only invoked from
+// the private branch.
+async function handlePrivateDefaultReply(fromTelegramUserId: number): Promise<void> {
+  try {
+    await sendMessage({ chatId: fromTelegramUserId, text: PRIVATE_DEFAULT_REPLY });
+  } catch (error) {
+    console.error('Failed to send private default reply:', error);
+  }
+}
+
+// P0 onboarding Step 3 / Step 4 — handle my_chat_member updates for the
+// bot itself. Telegram sends this update whenever the bot is added to,
+// promoted in, or removed from a group chat. The shape of
+// `new_chat_member.status` (Telegram docs:
+// https://core.telegram.org/bots/api#chatmember) tells us what happened:
+//   - 'member' — bot is in the group as a plain member
+//   - 'administrator' — bot has been promoted to admin
+//   - 'left' / 'kicked' — bot was removed (we don't act on these in P0)
+//
+// The flow the spec mandates:
+//
+//   1. Bot joined a group → confirm a Community row exists for this
+//      chat (i.e. the creator has already run /link in the group, OR
+//      the link request was pre-associated with a chat id — neither
+//      mechanism exists today, so today this only resolves after
+//      /link). If found, DM the creator asking for admin promotion.
+//      This is the "verify this onboarding belongs to the creator"
+//      guard in the spec — without a Community row, we cannot know
+//      which creator the group belongs to, and we must NOT DM a
+//      random Telegram user.
+//
+//   2. Bot promoted to admin → activate the Community, create the
+//      Mind conversation if it isn't already created (the legacy
+//      /link path may have already done this — we don't redo work),
+//      and DM the creator a success message.
+async function handleMyChatMember(update: NonNullable<TelegramUpdate['my_chat_member']>): Promise<void> {
+  // Only group / supergroup my_chat_member updates are relevant —
+  // channels are out of scope (spec: "Groups only"). The bot should
+  // never be in a private chat as a "member" so the chat.type check
+  // is also a safety net against future Telegram changes.
+  if (update.chat.type !== 'group' && update.chat.type !== 'supergroup') {
+    return;
+  }
+
+  // Telegram's status strings are stable for the bot's perspective.
+  // Anything else (creator, owner — impossible for a non-user bot, but
+  // defensive) is ignored.
+  const status = update.new_chat_member.status;
+  if (status !== 'member' && status !== 'administrator') {
+    return;
+  }
+
+  const telegramChatId = BigInt(update.chat.id);
+  const community = await prisma.community.findUnique({ where: { telegramChatId } });
+  if (!community) {
+    // No Community row for this group. The spec requires us to verify
+    // the onboarding belongs to the creator — without a Community row
+    // we cannot make that determination, and DMing an arbitrary user
+    // would be both wrong and a privacy violation. Log and skip.
+    console.log(
+      `my_chat_member: no Community for chat ${telegramChatId} (status=${status}); skipping DM.`,
+    );
+    return;
+  }
+
+  if (!community.creatorTelegramUserId) {
+    // The Community exists but we don't know which Telegram user is the
+    // creator — same privacy concern as above. Log and skip.
+    console.log(
+      `my_chat_member: Community ${community.id} has no creatorTelegramUserId; cannot DM.`,
+    );
+    return;
+  }
+
+  if (status === 'member') {
+    try {
+      await sendMessage({
+        chatId: community.creatorTelegramUserId,
+        text: ADMIN_PROMOTION_REQUEST_MESSAGE(update.chat.title ?? 'your group'),
+      });
+    } catch (error) {
+      console.error('Failed to send admin-promotion-request DM:', error);
+    }
+    return;
+  }
+
+  // status === 'administrator' — complete onboarding.
+  // Create the Mind conversation if not already present, then activate
+  // the Community and send the success message. Mirrors the
+  // Mind-conversation-creation block in handleLinkingCode so that
+  // either path (legacy /link, or the new my_chat_member flow) ends
+  // in the same state.
+  if (!community.mindsConversationId) {
+    const { alias } = await createConversation();
+    await setStandingInstructions(alias);
+    await prisma.community.update({
+      where: { id: community.id },
+      data: {
+        status: 'active',
+        mindsConversationId: alias,
+      },
+    });
+  } else {
+    // Mind conversation already exists (legacy /link path got there
+    // first). Just flip the status.
+    await prisma.community.update({
+      where: { id: community.id },
+      data: { status: 'active' },
+    });
+  }
+
+  try {
+    await sendMessage({
+      chatId: community.creatorTelegramUserId,
+      text: ONBOARDING_SUCCESS_MESSAGE(update.chat.title ?? 'your group'),
+    });
+  } catch (error) {
+    console.error('Failed to send onboarding success DM:', error);
+  }
 }
 
 export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
   QUEUE_NAMES.TELEGRAM_INGEST,
   async (job: Job<TelegramIngestJobData>) => {
     if (!isTelegramUpdate(job.data.update)) {
+      return;
+    }
+
+    // P0 onboarding Steps 3 & 4 — handle my_chat_member BEFORE the
+    // message branch. These updates have no `message` field, so the
+    // message branch would silently no-op anyway, but handling them
+    // first is clearer and avoids a misleading "no text" log line.
+    if (job.data.update.my_chat_member) {
+      await handleMyChatMember(job.data.update.my_chat_member);
       return;
     }
 
@@ -230,18 +445,21 @@ export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
       return;
     }
 
-    // /start is the only command this worker handles in a private DM to
-    // the bot. It's the entry point of the new onboarding flow (Build
-    // Plan: this fix) — the creator presses the deep link
-    // t.me/<bot>?start=<code>, the bot receives the /start here, and we
-    // persist creatorTelegramUserId on the link request so it's ready
-    // for the later /link in the group. Anything else in a private chat
-    // is out of scope (Blueprint Section 5.4: no private message
-    // ingestion).
+    // Private chat branch — handles BOTH /start (Step 2) and the
+    // default reply (Step 5). The order matters: /start must be
+    // matched first because a literal "/start" message would
+    // otherwise hit the default-reply branch. startMatch[1] is the
+    // code (or undefined for a bare /start).
     if (message.chat.type === 'private') {
       const startMatch = message.text.match(START_COMMAND_PATTERN);
       if (startMatch) {
         await handleStartCommand(startMatch[1], message.from?.id);
+        return;
+      }
+      if (message.from?.id !== undefined) {
+        // Step 5: any other private message gets the dashboard redirect.
+        // Sending is best-effort (see handlePrivateDefaultReply).
+        await handlePrivateDefaultReply(message.from.id);
       }
       return;
     }
