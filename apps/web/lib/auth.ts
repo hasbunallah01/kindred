@@ -82,6 +82,14 @@ export const auth = betterAuth({
       // emailOTP's overrideDefaultEmailVerification flag. Fewer moving
       // parts for the same outcome.
       sendVerificationOnSignUp: true,
+      // OTP lifetime in seconds. Default is 300 (5 minutes). We extend
+      // to 900 (15 minutes) because Gmail throttles new transactional
+      // senders aggressively — first emails from a new domain can take
+      // 5-10+ minutes to land in Inbox, and the 5-minute window
+      // expired before the user could enter the code. 15 minutes is
+      // still secure for OTP (6 digits = 1M combinations, brute force
+      // is impractical) and gives Gmail's queue plenty of buffer.
+      expiresIn: 900,
       async sendVerificationOTP({ email, otp, type }) {
         // Email copy + visual design live in ./email-templates.ts so the
         // auth config here stays declarative and the templates can be
