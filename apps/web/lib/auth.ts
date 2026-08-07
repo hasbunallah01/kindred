@@ -18,6 +18,30 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  // Public username handle — declared here so Better Auth's Prisma adapter
+  // accepts and persists the `username` field on signup. The Prisma column
+  // is `username String? @unique` (nullable, unique) — nullable so existing
+  // users (pre-username rollout) keep signing in with email + password
+  // without modification. New signups are required to provide one at the
+  // form level (apps/web/app/(auth)/signup/page.tsx); the Prisma unique
+  // constraint surfaces "username already taken" via Better Auth's standard
+  // error channel. The transform normalises any incoming value to lowercase
+  // server-side, defending against clients that bypass the form's auto-
+  // lowercasing. The 3-20 char alphanumeric+underscore rule is enforced
+  // at the form layer — see signup/page.tsx for the regex + helper copy.
+  user: {
+    additionalFields: {
+      username: {
+        type: 'string',
+        required: false,
+        input: true,
+        unique: true,
+        transform: {
+          input: (value) => (typeof value === 'string' ? value.toLowerCase() : value),
+        },
+      },
+    },
+  },
   // Email verification and password reset both use Better Auth's official
   // emailOTP plugin (better-auth/plugins) rather than the link-based
   // emailVerification hook from the original Checkpoint 18 build — the
