@@ -1,12 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { TextField } from '@/components/auth/TextField';
-import { SubmitButton } from '@/components/auth/SubmitButton';
 import { FormError } from '@/components/auth/FormError';
+import { SubmitButton } from '@/components/auth/SubmitButton';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -28,12 +29,6 @@ export default function SignUpPage() {
 
     setIsSubmitting(true);
 
-    // Better Auth's sign-up creates the user (emailVerified: false) and
-    // establishes a session immediately (unverified accounts can still hold
-    // a session — see Blueprint Section 4). The emailOTP plugin's
-    // sendVerificationOnSignUp config (apps/web/lib/auth.ts) sends the OTP
-    // through the existing Resend adapter automatically — nothing else to
-    // wire here.
     const { error: signUpError } = await authClient.signUp.email({
       name,
       email,
@@ -54,8 +49,8 @@ export default function SignUpPage() {
     <AuthShell
       title="Create your account"
       description="Start remembering the people behind your community."
-      backHref="/login"
-      backLabel="Already have an account? Sign in"
+      backHref="/"
+      backLabel="← Back to home"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <TextField
@@ -64,10 +59,9 @@ export default function SignUpPage() {
           type="text"
           required
           autoComplete="name"
+          autoFocus
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Your name"
-          autoFocus
         />
 
         <TextField
@@ -78,7 +72,6 @@ export default function SignUpPage() {
           autoComplete="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="you@example.com"
         />
 
         <TextField
@@ -91,7 +84,6 @@ export default function SignUpPage() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           helper="At least 8 characters."
-          placeholder="••••••••"
         />
 
         <TextField
@@ -103,7 +95,6 @@ export default function SignUpPage() {
           autoComplete="new-password"
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder="••••••••"
         />
 
         <FormError message={error} />
@@ -111,6 +102,16 @@ export default function SignUpPage() {
         <SubmitButton isSubmitting={isSubmitting} loadingLabel="Creating account…">
           Create account
         </SubmitButton>
+
+        <p className="pt-1 text-center text-sm text-text-muted">
+          Already have an account?{' '}
+          <Link
+            href="/login"
+            className="font-medium text-brand-primary transition-colors hover:text-brand-primary-hover"
+          >
+            Sign in
+          </Link>
+        </p>
       </form>
     </AuthShell>
   );

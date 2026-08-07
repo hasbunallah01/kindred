@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { OtpField } from '@/components/auth/TextField';
-import { SubmitButton } from '@/components/auth/SubmitButton';
 import { FormError } from '@/components/auth/FormError';
+import { SubmitButton } from '@/components/auth/SubmitButton';
 
 // useSearchParams() requires a Suspense boundary for the page to build
 // statically (Next.js App Router requirement) — the form itself lives in
@@ -26,10 +26,6 @@ function VerifyEmailForm() {
     setError(null);
     setIsSubmitting(true);
 
-    // Sign-up (Checkpoint 19/20) already created the session — an
-    // unverified account can hold one, per Blueprint Section 4. This step's
-    // only job is flipping emailVerified to true; no separate sign-in call
-    // is needed here.
     const { error: verifyError } = await authClient.emailOtp.verifyEmail({
       email,
       otp,
@@ -48,18 +44,9 @@ function VerifyEmailForm() {
   return (
     <AuthShell
       title="Verify your email"
-      description={
-        email ? (
-          <>
-            We sent a 6-digit code to <strong className="font-semibold text-text-primary">{email}</strong>.
-            Enter it below to continue.
-          </>
-        ) : (
-          'Enter the 6-digit code from your email to continue.'
-        )
-      }
+      description={`We sent a 6-digit code to ${email ? email : 'your inbox'}. Enter it below to continue.`}
       backHref="/login"
-      backLabel="Use a different account? Sign in"
+      backLabel="← Back to sign in"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <OtpField
@@ -71,19 +58,14 @@ function VerifyEmailForm() {
           maxLength={6}
           required
           autoComplete="one-time-code"
+          autoFocus
           value={otp}
           onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))}
-          placeholder="000000"
-          autoFocus
         />
 
         <FormError message={error} />
 
-        <SubmitButton
-          isSubmitting={isSubmitting}
-          loadingLabel="Verifying…"
-          disabled={otp.length !== 6}
-        >
+        <SubmitButton isSubmitting={isSubmitting} loadingLabel="Verifying…">
           Verify
         </SubmitButton>
       </form>
