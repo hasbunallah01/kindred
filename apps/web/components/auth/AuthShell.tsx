@@ -45,7 +45,11 @@ export function AuthShell({
     <main className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-12">
       {/* Kindred Mind wordmark. The full logo (not the icon badge) is
           used here so the auth flow reinforces the full product name.
-          Links back to the landing page root. */}
+          Links back to the landing page root. h-12 (48px) matches the
+          premium SaaS feel (Linear / Vercel / GitHub tier) and matches
+          the size used in the landing page navigation. The width is
+          `auto` so the 441:119 aspect ratio of .github/brand/kindred-logo.png
+          is preserved (no crop, no stretch, no compression). */}
       <Link
         href="/"
         aria-label="Kindred Mind — back to home"
@@ -54,7 +58,7 @@ export function AuthShell({
         <img
           src="/brand/kindred-logo.png"
           alt="Kindred Mind"
-          className="h-8 w-auto"
+          className="h-12 w-auto"
         />
       </Link>
 

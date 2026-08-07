@@ -185,18 +185,18 @@ function Nav() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur">
       <nav className="mx-auto flex h-16 max-w-marketing items-center justify-between px-6 sm:px-8">
         <a href="#top" className="flex items-center gap-2.5">
-          {/* Mobile: the icon badge only. Tablet/desktop: the full
-              wordmark. Same href, same alt text; the swap is purely
-              visual so the figures don't get crushed on narrow screens. */}
-          <img
-            src="/brand/kindred-badge.png"
-            alt="Kindred Mind"
-            className="h-7 w-7 sm:hidden"
-          />
+          {/* Full wordmark on every viewport — no badge swap. The
+              Kindred Mind horizontal logo (.github/brand/kindred-logo.png,
+              441x119) is the single brand asset and is used identically
+              on mobile and desktop. h-9 (36px) on mobile keeps the logo
+              clear of the Get Started button on the narrowest phones;
+              h-10 (40px) on sm+ matches the premium SaaS nav feel. The
+              width is `auto` so the 441:119 aspect ratio is preserved
+              (no crop, no stretch, no compression). */}
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="hidden h-7 w-auto sm:block"
+            className="h-9 w-auto sm:h-10"
           />
         </a>
 
