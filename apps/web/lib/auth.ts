@@ -3,6 +3,10 @@ import { emailOTP } from 'better-auth/plugins';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { prisma } from '@kindred/db';
 import { sendEmail } from './email';
+import {
+  buildVerificationOtpEmail,
+  buildPasswordResetOtpEmail,
+} from './email-templates';
 
 // Better Auth configuration for Kindred.
 //
@@ -79,31 +83,15 @@ export const auth = betterAuth({
       // parts for the same outcome.
       sendVerificationOnSignUp: true,
       async sendVerificationOTP({ email, otp, type }) {
-        const subject =
+        // Email copy + visual design live in ./email-templates.ts so the
+        // auth config here stays declarative and the templates can be
+        // tweaked (or new ones added) without touching Better Auth. The
+        // sign-up and password-reset flows share one visual template;
+        // only the heading, intro, preheader, and security notice differ.
+        const { subject, html } =
           type === 'forget-password'
-            ? 'Reset your password — Kindred'
-            : 'Verify your email — Kindred';
-        const intro =
-          type === 'forget-password'
-            ? 'Use this code to reset your Kindred password:'
-            : 'Use this code to verify your email address:';
-
-        // Logo is served from apps/web/public/brand/ (Next.js serves
-        // anything under public/ at the site root) and referenced via the
-        // existing NEXT_PUBLIC_APP_URL env var — no hardcoded domain.
-        // Email clients need an absolute, publicly-reachable URL; a local
-        // file path or relative path won't render in an inbox.
-        const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kindred.haybee.xyz';
-        const logoUrl = `${siteUrl}/brand/kindred-logo-email.png`;
-
-        const html = `
-          <div style="text-align:center;padding:24px 0 8px;">
-            <img src="${logoUrl}" alt="Kindred" width="200" style="max-width:200px;height:auto;" />
-          </div>
-          <p>${intro}</p>
-          <p style="font-size:28px;font-weight:600;letter-spacing:4px;">${otp}</p>
-          <p>This code expires in 5 minutes. If you didn't request this, you can ignore this email.</p>
-        `;
+            ? buildPasswordResetOtpEmail(otp)
+            : buildVerificationOtpEmail(otp);
 
         // Not awaited, per the emailOTP plugin's own documented guidance
         // (identical rationale to Checkpoint 18's original comment): avoids
