@@ -93,12 +93,29 @@ export const auth = betterAuth({
             ? buildPasswordResetOtpEmail(otp)
             : buildVerificationOtpEmail(otp);
 
-        // Not awaited, per the emailOTP plugin's own documented guidance
-        // (identical rationale to Checkpoint 18's original comment): avoids
-        // a timing side-channel. Errors are still caught and logged.
-        void sendEmail({ to: email, subject, html }).catch((error: unknown) => {
-          console.error('Failed to send OTP email:', error);
-        });
+        // The emailOTP plugin's documented guidance is to fire-and-forget
+        // the email send to avoid a timing side-channel on the OTP path.
+        // We keep that pattern (the signup / reset response must not
+        // reveal whether the email actually went out), BUT we now log
+        // both the success and the failure loudly so a Vercel function
+        // log search for '[email]' shows every send attempt with its
+        // outcome. Previous code only logged failures, which made
+        // silent "Resend accepted but the email was never delivered"
+        // cases nearly impossible to diagnose.
+        //
+        // What to look for in Vercel → Logs:
+        //   ✓ "[email] sent: <to> type=<type>"        — Resend accepted
+        //   ✗ "[email] FAILED: <to> type=<type> <err>" — Resend returned
+        //     an error; the message includes the Resend error text.
+        console.log(`[email] sending: to=${email} type=${type}`);
+        void sendEmail({ to: email, subject, html })
+          .then(() => {
+            console.log(`[email] sent: to=${email} type=${type}`);
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[email] FAILED: to=${email} type=${type} error=${message}`);
+          });
       },
     }),
   ],
