@@ -3,6 +3,10 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { TextField } from '@/components/auth/TextField';
+import { SubmitButton } from '@/components/auth/SubmitButton';
+import { FormError } from '@/components/auth/FormError';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -47,85 +51,67 @@ export default function SignUpPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6">
-      <form
-        onSubmit={handleSubmit}
-        className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
-      >
-        <h1 className="text-xl font-semibold tracking-tight">Create your account</h1>
+    <AuthShell
+      title="Create your account"
+      description="Start remembering the people behind your community."
+      backHref="/login"
+      backLabel="Already have an account? Sign in"
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <TextField
+          id="name"
+          label="Full name"
+          type="text"
+          required
+          autoComplete="name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Your name"
+          autoFocus
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="name" className="text-sm text-neutral-400">
-            Full name
-          </label>
-          <input
-            id="name"
-            type="text"
-            required
-            autoComplete="name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <TextField
+          id="email"
+          label="Email"
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="you@example.com"
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="email" className="text-sm text-neutral-400">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <TextField
+          id="password"
+          label="Password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          helper="At least 8 characters."
+          placeholder="••••••••"
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="password" className="text-sm text-neutral-400">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <TextField
+          id="confirmPassword"
+          label="Confirm password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          placeholder="••••••••"
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="confirmPassword" className="text-sm text-neutral-400">
-            Confirm password
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <FormError message={error} />
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-950 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Creating account…' : 'Create account'}
-        </button>
+        <SubmitButton isSubmitting={isSubmitting} loadingLabel="Creating account…">
+          Create account
+        </SubmitButton>
       </form>
-    </main>
+    </AuthShell>
   );
 }

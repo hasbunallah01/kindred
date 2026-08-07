@@ -3,6 +3,10 @@
 import { Suspense, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { OtpField } from '@/components/auth/TextField';
+import { SubmitButton } from '@/components/auth/SubmitButton';
+import { FormError } from '@/components/auth/FormError';
 
 // useSearchParams() requires a Suspense boundary for the page to build
 // statically (Next.js App Router requirement) — the form itself lives in
@@ -42,21 +46,25 @@ function VerifyEmailForm() {
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
+    <AuthShell
+      title="Verify your email"
+      description={
+        email ? (
+          <>
+            We sent a 6-digit code to <strong className="font-semibold text-text-primary">{email}</strong>.
+            Enter it below to continue.
+          </>
+        ) : (
+          'Enter the 6-digit code from your email to continue.'
+        )
+      }
+      backHref="/login"
+      backLabel="Use a different account? Sign in"
     >
-      <h1 className="text-xl font-semibold tracking-tight">Verify your email</h1>
-      <p className="text-sm text-neutral-400">
-        We sent a 6-digit code to <strong>{email}</strong>. Enter it below.
-      </p>
-
-      <div className="flex flex-col gap-1">
-        <label htmlFor="otp" className="text-sm text-neutral-400">
-          Verification code
-        </label>
-        <input
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <OtpField
           id="otp"
+          label="Verification code"
           type="text"
           inputMode="numeric"
           pattern="[0-9]{6}"
@@ -65,29 +73,28 @@ function VerifyEmailForm() {
           autoComplete="one-time-code"
           value={otp}
           onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))}
-          className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-center text-lg tracking-[0.5em] text-neutral-100"
+          placeholder="000000"
+          autoFocus
         />
-      </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+        <FormError message={error} />
 
-      <button
-        type="submit"
-        disabled={isSubmitting || otp.length !== 6}
-        className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-950 disabled:opacity-50"
-      >
-        {isSubmitting ? 'Verifying…' : 'Verify'}
-      </button>
-    </form>
+        <SubmitButton
+          isSubmitting={isSubmitting}
+          loadingLabel="Verifying…"
+          disabled={otp.length !== 6}
+        >
+          Verify
+        </SubmitButton>
+      </form>
+    </AuthShell>
   );
 }
 
 export default function VerifyEmailPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6">
-      <Suspense fallback={null}>
-        <VerifyEmailForm />
-      </Suspense>
-    </main>
+    <Suspense fallback={null}>
+      <VerifyEmailForm />
+    </Suspense>
   );
 }
