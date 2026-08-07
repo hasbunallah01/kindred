@@ -18,6 +18,23 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  // Trusted origins for CSRF / origin-header validation. Better Auth only
+  // accepts requests whose `Origin` header matches one of these (or the
+  // configured baseURL / BETTER_AUTH_URL). Without this, every Vercel
+  // preview deployment (`https://<project>-git-<branch>-<account>.vercel.app`)
+  // is rejected with "Invalid origin" because baseURL is set to the
+  // production domain. The wildcard covers every Vercel preview URL in
+  // one entry (Better Auth's matchesOriginPattern supports `*`). The
+  // production custom domain (e.g. https://kindred.haybee.xyz) is still
+  // covered automatically by baseURL / BETTER_AUTH_URL — we don't need
+  // to list it here.
+  //
+  // We intentionally do NOT include `http://localhost:*` in this list:
+  // local dev should set BETTER_AUTH_URL=http://localhost:3000 (see
+  // .env.example), and Better Auth trusts the baseURL by default.
+  trustedOrigins: [
+    'https://*.vercel.app',
+  ],
   // Public username handle — declared here so Better Auth's Prisma adapter
   // accepts and persists the `username` field on signup. The Prisma column
   // is `username String? @unique` (nullable, unique) — nullable so existing

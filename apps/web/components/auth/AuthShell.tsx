@@ -45,9 +45,11 @@ export function AuthShell({
     <main className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-12">
       {/* Kindred Mind wordmark. The full logo (not the icon badge) is
           used here so the auth flow reinforces the full product name.
-          Links back to the landing page root. h-12 (48px) matches the
-          premium SaaS feel (Linear / Vercel / GitHub tier) and matches
-          the size used in the landing page navigation. The width is
+          Links back to the landing page root. h-12 (48px) on mobile —
+          clear and readable on phones. h-[60px] (60px) on sm+ — ~25%
+          larger than mobile, hits the user's "20-30% larger on
+          desktop" range and lands the wordmark closer to the premium
+          SaaS tier (Linear / Vercel / GitHub / Clerk). The width is
           `auto` so the 441:119 aspect ratio of .github/brand/kindred-logo.png
           is preserved (no crop, no stretch, no compression). */}
       <Link
@@ -58,15 +60,19 @@ export function AuthShell({
         <img
           src="/brand/kindred-logo.png"
           alt="Kindred Mind"
-          className="h-12 w-auto"
+          className="h-12 w-auto sm:h-[60px]"
         />
       </Link>
 
       {/* The auth card. White, soft border, soft shadow, 20px radius.
           32px padding on desktop, 24px on mobile. The form width is
-          intentionally narrow (420px) — Linear, Vercel, GitHub, Clerk
-          all keep auth forms tight to help users focus. */}
-      <div className="w-full max-w-[420px] rounded-card border border-border bg-white p-6 shadow-sm sm:p-8">
+          intentionally narrow (400px, down from 420px) — matches the
+          Linear / Vercel / Supabase tier and gives the page room to
+          breathe on desktop. Equal horizontal margins come from the
+          outer `flex items-center justify-center` on <main> below —
+          the card centers itself, and the wider the viewport, the more
+          comfortable the whitespace on each side. */}
+      <div className="w-full max-w-[400px] rounded-card border border-border bg-white p-6 shadow-sm sm:p-8">
         <h1 className="text-2xl font-bold tracking-tight text-text-primary">
           {title}
         </h1>
