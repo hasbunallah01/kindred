@@ -121,6 +121,36 @@ const WELCOME_MESSAGE =
   "I never chat in your group.\n\n" +
   "After you've added me, I'll finish the connection automatically.";
 
+// The bot's Telegram username. Used to build the inline "Add me to your
+// group" button on the welcome message. Resolved at module load — the
+// same value the deeplink in apps/web uses, so a username change in
+// one place requires a change in the other. Both fall back to the
+// production bot (KindredHaybeeBot) when the env var is missing.
+const TELEGRAM_BOT_USERNAME =
+  process.env.TELEGRAM_BOT_USERNAME ?? 'KindredHaybeeBot';
+
+// Inline keyboard attached to the welcome DM. The single button is a
+// URL button whose target is the bot's ?startgroup=true deep link,
+// which is Telegram's documented "open the add-to-group picker for
+// this bot" URL (https://core.telegram.org/bots/features#deep-linking).
+// It is intentionally NOT the same ?startgroup=<code> shortcut the
+// legacy flow used: the bot has already captured the creator's
+// Telegram user ID at /start <code> time, so the group picker only
+// needs to open — it doesn't need to carry another code. The
+// my_chat_member handler looks the pending link request back up by
+// `creatorTelegramUserId`, which makes the round trip work without a
+// code in the URL.
+const WELGRAM_WELCOME_KEYBOARD = {
+  inline_keyboard: [
+    [
+      {
+        text: '➕ Add me to your group',
+        url: `https://t.me/${TELEGRAM_BOT_USERNAME}?startgroup=true`,
+      },
+    ],
+  ],
+};
+
 const ADMIN_PROMOTION_REQUEST_MESSAGE = (groupName: string) =>
   `I joined ${groupName}.\n\n` +
   'Please promote me to Administrator so I can begin monitoring your community.';
@@ -287,7 +317,11 @@ async function handleStartCommand(
   });
 
   try {
-    await sendMessage({ chatId: BigInt(fromTelegramUserId), text: WELCOME_MESSAGE });
+    await sendMessage({
+      chatId: BigInt(fromTelegramUserId),
+      text: WELCOME_MESSAGE,
+      replyMarkup: WELGRAM_WELCOME_KEYBOARD,
+    });
   } catch (error) {
     console.error(
       'Failed to send welcome DM after /start (creator Telegram ID was still persisted):',

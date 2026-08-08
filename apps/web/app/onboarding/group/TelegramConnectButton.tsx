@@ -8,11 +8,24 @@ import { FormError } from '@/components/auth/FormError';
 // Client-side wrapper for the Telegram platform card on
 // /onboarding/group. On click:
 //   1. POST /api/telegram/link to mint a one-shot LinkRequest
-//   2. Build the Telegram deeplink from the returned code
+//   2. Build a Telegram deeplink that opens the bot's PRIVATE chat
+//      with /start <code> (NOT the group-picker shortcut)
 //   3. window.location.assign(deeplink) — the browser navigates
-//      away to Telegram, where the user picks a group and the bot
-//      is added (which fires the my_chat_member event the agent
-//      consumes to create the Community)
+//      away to Telegram, where:
+//        a. the bot receives /start <code>, captures the creator's
+//           Telegram user ID, and DMs a guided welcome message
+//        b. the welcome includes an "Add me to your group" button
+//           that opens the group-picker (t.me/<bot>?startgroup=true)
+//        c. the user picks a group, the bot is added, my_chat_member
+//           fires, the agent binds the chat to the pending link
+//           request, and a Community row is created
+//
+// Why not jump straight to ?startgroup=<code>?
+//   The user wanted the bot to guide them through onboarding, not
+//   skip to a raw group picker. The bot's /start handler already
+//   captures the creator's identity and DMs a copy-reviewed welcome;
+//   the inline button on that welcome then opens the group picker in
+//   a guided way. This matches the wireframe flow the user approved.
 //
 // Errors are surfaced inline via the same FormError component the
 // auth pages use — calm red, no full-page error UI. The 401 case
@@ -26,17 +39,23 @@ interface LinkResponse {
 
 // The bot's Telegram username. Read from env when set (so the
 // deployment can override it); falls back to the production value
-// for the local build. Whatever path is used, the link is a normal
-// Telegram deeplink that opens the bot's chat/group selection
-// dialog.
+// for the local build. The deeplink we build is just a normal
+// t.me/<bot> chat-open link with the linking code as the /start
+// payload — Telegram renders that as a "/start <code>" message in
+// the bot's private chat, which is the canonical "user opened the
+// bot with a linking code" signal the agent's /start handler reads.
 const BOT_USERNAME =
   process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'KindredHaybeeBot';
 
 function buildDeeplink(code: string): string {
-  // ?startgroup=<code> opens a Telegram dialog asking the user which
-  // group to add the bot to. The payload is sent along so the bot
-  // can read the linking code without a separate /start in private.
-  return `https://t.me/${BOT_USERNAME}?startgroup=${encodeURIComponent(code)}`;
+  // ?start=<code> opens the bot's private chat and sends /start <code>
+  // as a normal message. The agent's handleStartCommand reads the
+  // code, captures the creator's Telegram user ID, and DMs the
+  // welcome message that includes the "Add me to your group" button
+  // (which itself opens t.me/<bot>?startgroup=true — the group
+  // picker — so the user lands there with one extra click, but the
+  // bot has already captured their identity and given them guidance).
+  return `https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(code)}`;
 }
 
 export function TelegramConnectButton() {
