@@ -40,39 +40,49 @@ const connection = new IORedis(process.env.REDIS_URL!, {
 // `my_chat_member` is the new shape this worker added for the P0
 // onboarding flow (Steps 3 and 4) — Telegram sends it whenever the
 // bot itself is added to, promoted in, or removed from a group chat.
+//
+// ID fields are typed as `string`, not `number`, to preserve precision
+// for large Telegram identifiers through the JSON pipeline. The
+// Vercel webhook (apps/web/app/api/telegram/webhook/route.ts) converts
+// every `id` field to a string before enqueuing into BullMQ, because
+// `JSON.stringify` (which BullMQ uses to persist job data in Redis)
+// would otherwise lose precision on any integer exceeding
+// `Number.MAX_SAFE_INTEGER` (2^53 - 1). At the database boundary, the
+// worker calls `BigInt(value)` — `BigInt()` accepts both numbers and
+// strings, so this type change is lossless.
 interface TelegramUpdate {
   message?: {
     text?: string;
     chat: {
-      id: number;
+      id: string;
       type: string;
       title?: string;
     };
     from?: {
-      id: number;
+      id: string;
       username?: string;
       first_name?: string;
       last_name?: string;
     };
     reply_to_message?: {
       from?: {
-        id: number;
+        id: string;
       };
     };
   };
   my_chat_member?: {
     chat: {
-      id: number;
+      id: string;
       type: string;
       title?: string;
     };
     from: {
-      id: number;
+      id: string;
     };
     new_chat_member: {
       status: string;
       user: {
-        id: number;
+        id: string;
         username?: string;
       };
     };
@@ -136,9 +146,9 @@ const PARTICIPATION_WINDOW_MS = 30 * 60 * 1000;
 
 async function handleLinkingCode(
   code: string,
-  chatId: number,
+  chatId: string,
   chatTitle: string | undefined,
-  fromTelegramUserId: number | undefined,
+  fromTelegramUserId: string | undefined,
 ): Promise<void> {
   const linkRequest = await prisma.telegramLinkRequest.findUnique({ where: { code } });
 
@@ -249,7 +259,7 @@ async function handleLinkingCode(
 // which re-runs this same handler.
 async function handleStartCommand(
   code: string | undefined,
-  fromTelegramUserId: number | undefined,
+  fromTelegramUserId: string | undefined,
 ): Promise<void> {
   if (!code) {
     return; // Bare /start with no deep-link payload — just "user opened chat".
@@ -277,7 +287,7 @@ async function handleStartCommand(
   });
 
   try {
-    await sendMessage({ chatId: fromTelegramUserId, text: WELCOME_MESSAGE });
+    await sendMessage({ chatId: BigInt(fromTelegramUserId), text: WELCOME_MESSAGE });
   } catch (error) {
     console.error(
       'Failed to send welcome DM after /start (creator Telegram ID was still persisted):',
@@ -298,9 +308,9 @@ async function handleStartCommand(
 // silently). The chat.type === 'private' check is the only guard needed
 // because the caller (handlePrivateMessage below) is only invoked from
 // the private branch.
-async function handlePrivateDefaultReply(fromTelegramUserId: number): Promise<void> {
+async function handlePrivateDefaultReply(fromTelegramUserId: string): Promise<void> {
   try {
-    await sendMessage({ chatId: fromTelegramUserId, text: PRIVATE_DEFAULT_REPLY });
+    await sendMessage({ chatId: BigInt(fromTelegramUserId), text: PRIVATE_DEFAULT_REPLY });
   } catch (error) {
     console.error('Failed to send private default reply:', error);
   }

@@ -3,6 +3,48 @@ import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
 
+// Recursively walk a parsed JSON value and stringify every field whose
+// key is `id` (or whose value is a number too large to fit in a JS
+// double-precision float). This prevents precision loss for Telegram
+// user IDs, group chat IDs, and any other integer field that might
+// exceed `Number.MAX_SAFE_INTEGER` (2^53 - 1 = 9007199254740991) on
+// its way through the JSON → BullMQ → Redis → JSON pipeline.
+//
+// Why string and not bigint: BullMQ serializes job data with
+// `JSON.stringify` for storage in Redis, and `JSON.stringify` throws
+// on `bigint` values. The agent's worker calls `BigInt(update.chat.id)`
+// at the database boundary — `BigInt()` accepts both numbers and
+// strings, so emitting IDs as strings is a lossless representation that
+// works with JSON.stringify and converts cleanly to the BigInt the
+// Prisma schema expects.
+function preserveIntegerPrecision(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) ? value : value.toString();
+  }
+  if (Array.isArray(value)) {
+    return value.map(preserveIntegerPrecision);
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      // The Telegram Bot API uses `id` for every integer identifier
+      // (user, chat, message, update). Convert those to strings to
+      // survive the JSON pipeline, and also convert any other unsafe
+      // integer (defense in depth in case Telegram adds new ID fields
+      // we haven't seen yet).
+      if (k === 'id' && typeof v === 'number') {
+        out[k] = v.toString();
+      } else {
+        out[k] = preserveIntegerPrecision(v);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
 // REDIS_URL is required — no localhost fallback. Failing fast with 500
 // here is intentional: the previous "create a connection and let ioredis
 // retry forever" pattern hung the Vercel function for 100s+ when the env
@@ -52,6 +94,13 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+
+  // Convert any `id` fields to strings (and any other unsafe integers)
+  // before handing the payload to BullMQ. This is the lossless
+  // representation: the worker's `BigInt(update.chat.id)` calls accept
+  // both numbers and strings, so the round trip through Redis JSON
+  // storage can't lose precision on large Telegram IDs.
+  update = preserveIntegerPrecision(update);
 
   const connectionOrError = getConnection();
   if (connectionOrError instanceof NextResponse) {
