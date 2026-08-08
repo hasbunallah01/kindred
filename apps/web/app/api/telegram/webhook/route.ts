@@ -3,23 +3,34 @@ import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
 
-// This connection intentionally does NOT set maxRetriesPerRequest: null —
-// that's correct for a Worker (a background process that can wait), but
-// wrong for a producer sitting behind an HTTP request: if Redis is down,
-// an HTTP caller (Telegram, in this case) shouldn't hang forever waiting
-// on retries. Left at BullMQ/ioredis's own default.
-//
-// REDIS_URL is required — no localhost fallback. The agent's startup
-// gate (apps/agent/src/index.ts validateRequiredEnv) covers the
-// agent's workers; this route runs on Vercel, which surfaces a
-// missing env var as a loud 500 at first request, not a silent hang.
-// Same risk class as forgetting any other Vercel env var (Telegram
-// webhook secret, etc.).
-const connection = new IORedis(process.env.REDIS_URL!);
-
-const telegramIngestQueue = new Queue<TelegramIngestJobData>(QUEUE_NAMES.TELEGRAM_INGEST, {
-  connection,
-});
+// REDIS_URL is required — no localhost fallback. Failing fast with 500
+// here is intentional: the previous "create a connection and let ioredis
+// retry forever" pattern hung the Vercel function for 100s+ when the env
+// was missing or unreachable, which made the whole webhook look broken
+// (Telegram would retry, Vercel would accumulate timed-out invocations,
+// and the producer-side failure masqueraded as a runtime hang). Checking
+// up front turns "the function silently disappears" into "the function
+// returns a clear error in milliseconds", which is what an HTTP caller
+// like Telegram actually needs to back off cleanly.
+function getConnection(): IORedis | NextResponse {
+  const url = process.env.REDIS_URL;
+  if (!url) {
+    return NextResponse.json(
+      { error: 'REDIS_URL is not set' },
+      { status: 500 }
+    );
+  }
+  // maxRetriesPerRequest: 1 + a tight 2s connect timeout. The previous
+  // defaults (20 retries, no connect timeout) would hang the function
+  // past Vercel's 10–300s limit when Redis was unreachable. For an HTTP
+  // producer (Telegram, in this case) we'd rather fail fast and let
+  // Telegram retry than block the whole function on a slow Redis.
+  return new IORedis(url, {
+    maxRetriesPerRequest: 1,
+    connectTimeout: 2000,
+    enableReadyCheck: true,
+  });
+}
 
 // Receives every Telegram update for the bot (Blueprint Section 5.3 step
 // 1-2). Does no processing itself — validates the secret Telegram sends,
@@ -42,10 +53,48 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  await telegramIngestQueue.add('process-update', {
-    update,
-    receivedAt: new Date().toISOString(),
+  const connectionOrError = getConnection();
+  if (connectionOrError instanceof NextResponse) {
+    return connectionOrError;
+  }
+  const connection = connectionOrError;
+
+  // The queue is created per-request now (not at module load). The old
+  // module-level `new IORedis(...)` was the hang source: it ran during
+  // Vercel's cold start, and if the connection failed it retried for the
+  // whole function timeout before any request handler could run. Per-
+  // request creation is slightly more overhead (one TCP+TLS handshake
+  // per webhook call) but turns connection failure into a fast, visible
+  // 5xx response. Telegram is happy to retry; Vercel functions are not
+  // happy to be held open for 100s.
+  const queue = new Queue<TelegramIngestJobData>(QUEUE_NAMES.TELEGRAM_INGEST, {
+    connection,
   });
 
-  return NextResponse.json({ ok: true });
+  try {
+    // Race the enqueue against a 4s hard timeout. If Redis is slow or
+    // unreachable, we lose this race and return 503 — Telegram will
+    // retry, the agent's workers won't see the job until Redis is back,
+    // and the function returns within Vercel's limits.
+    await Promise.race([
+      queue.add('process-update', {
+        update,
+        receivedAt: new Date().toISOString(),
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('enqueue timeout')), 4000)
+      ),
+    ]);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error('[telegram-webhook] enqueue failed:', err);
+    return NextResponse.json(
+      { error: 'Failed to enqueue update', detail: String(err) },
+      { status: 503 }
+    );
+  } finally {
+    // Close the connection so we don't leak it (Vercel functions are
+    // short-lived; leaving an open socket is a small but real cost).
+    await connection.quit().catch(() => {});
+  }
 }
