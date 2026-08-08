@@ -6,6 +6,7 @@ import { FaDiscord, FaXTwitter, FaSlack } from 'react-icons/fa6';
 import { auth } from '@/lib/auth';
 import { prisma } from '@kindred/db';
 import { PlatformCard } from '@/components/dashboard/PlatformCard';
+import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
 import { TelegramConnectButton } from './TelegramConnectButton';
 
 // /onboarding/group — the only onboarding step the user actually
@@ -39,33 +40,11 @@ export default async function OnboardingGroupPage() {
   }
 
   const username = session.user.username ?? null;
+  const email = session.user.email ?? null;
 
   return (
     <main className="min-h-screen bg-surface text-text-primary">
-      {/* Top header: brand wordmark on the left, creator's username
-          on the right. On mobile, a small "+" button takes them
-          back to /onboarding/group (this page) so they can switch
-          accounts; on desktop, the username alone is enough
-          affordance. */}
-      <header className="border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-6">
-          <Link href="/" aria-label="Kindred Mind — back to home" className="inline-block">
-            <img
-              src="/brand/kindred-logo.png"
-              alt="Kindred Mind"
-              className="h-9 w-auto sm:h-10"
-            />
-          </Link>
-          <div className="flex items-center gap-2">
-            <span className="hidden text-sm text-text-secondary sm:inline">
-              {username ?? 'You'}
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-primary text-sm font-semibold text-white">
-              {(username ?? '?').charAt(0).toUpperCase()}
-            </div>
-          </div>
-        </div>
-      </header>
+      <OnboardingHeader username={username} email={email} />
 
       <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-6 px-5 py-8 sm:gap-8 sm:px-8 sm:py-14">
         {/* Headline + subhead */}

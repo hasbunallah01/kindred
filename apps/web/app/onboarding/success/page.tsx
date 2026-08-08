@@ -5,6 +5,7 @@ import { Check, ArrowRight } from 'lucide-react';
 import { FaTelegram } from 'react-icons/fa6';
 import { auth } from '@/lib/auth';
 import { prisma } from '@kindred/db';
+import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
 
 // /onboarding/success — the calm confirmation page shown after
 // Kindred has bound to the creator's Telegram community. Gates
@@ -33,29 +34,12 @@ export default async function OnboardingSuccessPage() {
     redirect('/onboarding/group');
   }
 
+  const username = session.user.username ?? null;
+  const email = session.user.email ?? null;
+
   return (
     <main className="min-h-screen bg-surface text-text-primary">
-      {/* Same top header as the group page so the creator never
-          feels they're on a different site between steps. */}
-      <header className="border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-6">
-          <Link href="/" aria-label="Kindred Mind — back to home" className="inline-block">
-            <img
-              src="/brand/kindred-logo.png"
-              alt="Kindred Mind"
-              className="h-9 w-auto sm:h-10"
-            />
-          </Link>
-          <div className="flex items-center gap-2">
-            <span className="hidden text-sm text-text-secondary sm:inline">
-              {session.user.username ?? 'You'}
-            </span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-primary text-sm font-semibold text-white">
-              {(session.user.username ?? '?').charAt(0).toUpperCase()}
-            </div>
-          </div>
-        </div>
-      </header>
+      <OnboardingHeader username={username} email={email} />
 
       <div className="mx-auto flex w-full max-w-md flex-col items-center gap-5 px-5 py-12 text-center sm:gap-6 sm:py-16">
         {/* Soft checkmark — purple wash, no animation, no confetti. */}
@@ -65,7 +49,7 @@ export default async function OnboardingSuccessPage() {
 
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
-            Kindred is now connected!
+            🎉 Kindred is now connected!
           </h1>
           <p className="text-sm text-text-secondary sm:text-base">
             Your community is connected and your Mind has started listening.
