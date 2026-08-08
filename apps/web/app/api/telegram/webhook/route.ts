@@ -1,43 +1,44 @@
 import { NextResponse } from 'next/server';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import JSONBigInt from 'json-bigint';
 import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
 
-// Recursively walk a parsed JSON value and stringify every field whose
-// key is `id` (or whose value is a number too large to fit in a JS
-// double-precision float). This prevents precision loss for Telegram
-// user IDs, group chat IDs, and any other integer field that might
-// exceed `Number.MAX_SAFE_INTEGER` (2^53 - 1 = 9007199254740991) on
-// its way through the JSON → BullMQ → Redis → JSON pipeline.
+// Recursively walk a value produced by `json-bigint`'s parser and
+// stringify every field — both BigInts (large integers) and unsafe
+// floats — so the result is a plain object BullMQ can JSON.stringify
+// for Redis storage without losing precision.
 //
-// Why string and not bigint: BullMQ serializes job data with
-// `JSON.stringify` for storage in Redis, and `JSON.stringify` throws
-// on `bigint` values. The agent's worker calls `BigInt(update.chat.id)`
-// at the database boundary — `BigInt()` accepts both numbers and
-// strings, so emitting IDs as strings is a lossless representation that
-// works with JSON.stringify and converts cleanly to the BigInt the
-// Prisma schema expects.
-function preserveIntegerPrecision(value: unknown): unknown {
+// Why this matters: standard `JSON.parse` truncates integers larger
+// than `Number.MAX_SAFE_INTEGER` (2^53 - 1) at parse time, so any
+// subsequent conversion can only preserve the *corrupted* value.
+// `json-bigint` instead emits BigInts for those, which is lossless
+// until the next `JSON.stringify` (which throws on BigInts). We
+// resolve that by converting BigInts to strings here — strings round-
+// trip through JSON.stringify unchanged, and the worker's
+// `BigInt(update.chat.id)` calls at the database boundary accept
+// strings, so this is a lossless representation end to end.
+function jsonBigIntsToStrings(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === 'bigint') return value.toString();
   if (typeof value === 'number') {
     return Number.isSafeInteger(value) ? value : value.toString();
   }
   if (Array.isArray(value)) {
-    return value.map(preserveIntegerPrecision);
+    return value.map(jsonBigIntsToStrings);
   }
   if (typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       // The Telegram Bot API uses `id` for every integer identifier
-      // (user, chat, message, update). Convert those to strings to
-      // survive the JSON pipeline, and also convert any other unsafe
-      // integer (defense in depth in case Telegram adds new ID fields
-      // we haven't seen yet).
+      // (user, chat, message, update). Force those to strings even if
+      // they fit in a safe integer — keeps the data model uniform and
+      // means the agent never has to wonder "is this id a number or
+      // a string?" in its TypeScript types.
       if (k === 'id' && typeof v === 'number') {
         out[k] = v.toString();
       } else {
-        out[k] = preserveIntegerPrecision(v);
+        out[k] = jsonBigIntsToStrings(v);
       }
     }
     return out;
@@ -90,17 +91,21 @@ export async function POST(request: Request) {
 
   let update: unknown;
   try {
-    update = await request.json();
+    // Use json-bigint to parse the raw body — the standard `request.json()`
+    // (which calls `JSON.parse`) silently truncates integers larger than
+    // `Number.MAX_SAFE_INTEGER` (2^53 - 1), and the corruption happens
+    // before any code we write gets a chance to see the original value.
+    // json-bigint returns BigInts for those, which preserves the full
+    // 64-bit precision of Telegram user/chat IDs.
+    const text = await request.text();
+    const parsed = JSONBigInt.parse(text);
+    // Convert BigInts to strings and force every `id` field to a string
+    // before enqueuing, so the value is safe for BullMQ's internal
+    // JSON.stringify and the agent's TypeScript types stay uniform.
+    update = jsonBigIntsToStrings(parsed);
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-
-  // Convert any `id` fields to strings (and any other unsafe integers)
-  // before handing the payload to BullMQ. This is the lossless
-  // representation: the worker's `BigInt(update.chat.id)` calls accept
-  // both numbers and strings, so the round trip through Redis JSON
-  // storage can't lose precision on large Telegram IDs.
-  update = preserveIntegerPrecision(update);
 
   const connectionOrError = getConnection();
   if (connectionOrError instanceof NextResponse) {
