@@ -47,7 +47,7 @@ function VerifyEmailForm() {
       return;
     }
 
-    router.push('/onboarding');
+    router.push('/onboarding/group');
   };
 
   const handleResend = async () => {

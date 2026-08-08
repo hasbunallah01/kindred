@@ -63,7 +63,7 @@ function ResetPasswordConfirmForm() {
       return;
     }
 
-    router.push('/onboarding');
+    router.push('/onboarding/group');
   };
 
   return (
