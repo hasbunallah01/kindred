@@ -34,6 +34,15 @@ model User {
   email         String
   emailVerified Boolean
   image         String?
+  // Public handle — the unique, human-friendly identifier users share with
+  // each other. Nullable so existing users (pre-username rollout) are not
+  // broken: they keep signing in with email + password and `username` is
+  // simply null on their row. New signups are required to provide one —
+  // enforced at the form level (apps/web/app/(auth)/signup/page.tsx) and
+  // by Better Auth's additionalFields config (apps/web/lib/auth.ts). The
+  // Prisma column is left nullable rather than required so the unique
+  // constraint does not block existing-user sign-in.
+  username      String?  @unique
   createdAt     DateTime
   updatedAt     DateTime
 

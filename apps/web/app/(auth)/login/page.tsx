@@ -1,9 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { authClient } from '@/lib/auth-client';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { TextField } from '@/components/auth/TextField';
+import { FormError } from '@/components/auth/FormError';
+import { SubmitButton } from '@/components/auth/SubmitButton';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,67 +33,64 @@ export default function LoginPage() {
       return;
     }
 
-    // Onboarding is the next step in the Blueprint's stated flow. The
-    // onboarding page itself isn't built yet (out of scope — Phase 3) and
-    // Checkpoint 22's middleware is what actually protects this route.
-    router.push('/onboarding');
+    router.push('/onboarding/group');
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6">
-      <form
-        onSubmit={handleSubmit}
-        className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
-      >
-        <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+    <AuthShell
+      title="Sign in to Kindred Mind"
+      description="Welcome back. Sign in to your account."
+      // No "back to home" link on the login page — it is itself the entry
+      // to most other auth pages, and the landing page is one click away
+      // via the logo above the card.
+      backHref={null}
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <TextField
+          id="email"
+          label="Email"
+          type="email"
+          required
+          autoComplete="email"
+          autoFocus
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="email" className="text-sm text-neutral-400">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
+        <TextField
+          id="password"
+          label="Password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+
+        <FormError message={error} />
+
+        <SubmitButton isSubmitting={isSubmitting} loadingLabel="Signing in…">
+          Sign in
+        </SubmitButton>
+
+        <div className="flex flex-col items-center gap-1.5 pt-1 text-sm">
+          <Link
+            href="/reset-password"
+            className="text-text-secondary transition-colors hover:text-brand-primary"
+          >
+            Forgot password?
+          </Link>
+          <p className="text-text-muted">
+            Don&apos;t have an account?{' '}
+            <Link
+              href="/signup"
+              className="font-medium text-brand-primary transition-colors hover:text-brand-primary-hover"
+            >
+              Create one
+            </Link>
+          </p>
         </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="password" className="text-sm text-neutral-400">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
-
-        {error && <p className="text-sm text-red-400">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-950 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
-        </button>
-
-        <Link
-          href="/reset-password"
-          className="text-center text-sm text-neutral-400 hover:text-neutral-200"
-        >
-          Forgot password?
-        </Link>
       </form>
-    </main>
+    </AuthShell>
   );
 }

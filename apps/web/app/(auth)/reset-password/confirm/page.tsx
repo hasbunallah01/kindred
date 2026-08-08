@@ -3,6 +3,10 @@
 import { Suspense, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { TextField, OtpField } from '@/components/auth/TextField';
+import { FormError } from '@/components/auth/FormError';
+import { SubmitButton } from '@/components/auth/SubmitButton';
 
 // useSearchParams() requires a Suspense boundary for the page to build
 // statically (Next.js App Router requirement) — same pattern as
@@ -44,9 +48,7 @@ function ResetPasswordConfirmForm() {
     // resetPassword updates the credential but does not itself establish a
     // session. The product requirement is explicit that the user must be
     // signed in automatically after a reset, so we chain an ordinary
-    // email/password sign-in with the just-set password immediately after
-    // — reusing the exact same sign-in call Checkpoint 20's login page
-    // uses, not a new mechanism.
+    // email/password sign-in with the just-set password immediately after.
     const { error: signInError } = await authClient.signIn.email({
       email,
       password,
@@ -61,88 +63,74 @@ function ResetPasswordConfirmForm() {
       return;
     }
 
-    router.push('/onboarding');
+    router.push('/onboarding/group');
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
+    <AuthShell
+      title="Enter your new password"
+      description={`Enter the 6-digit code sent to ${email ? email : 'your email'} along with your new password.`}
+      // No "back" link on the confirm step — the user is mid-flow and the
+      // most useful action is "request a new code" which is a future
+      // improvement, not a navigation action.
+      backHref={null}
     >
-      <h1 className="text-xl font-semibold tracking-tight">Enter your new password</h1>
-      <p className="text-sm text-neutral-400">
-        Enter the 6-digit code sent to <strong>{email}</strong> along with your new password.
-      </p>
-
-      <div className="flex flex-col gap-1">
-        <label htmlFor="otp" className="text-sm text-neutral-400">
-          Verification code
-        </label>
-        <input
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <OtpField
           id="otp"
+          label="Verification code"
           type="text"
           inputMode="numeric"
           pattern="[0-9]{6}"
           maxLength={6}
           required
           autoComplete="one-time-code"
+          autoFocus
           value={otp}
           onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))}
-          className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-center text-lg tracking-[0.5em] text-neutral-100"
         />
-      </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="password" className="text-sm text-neutral-400">
-          New password
-        </label>
-        <input
+        <TextField
           id="password"
+          label="New password"
           type="password"
           required
           minLength={8}
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+          helper="At least 8 characters."
         />
-      </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="confirmPassword" className="text-sm text-neutral-400">
-          Confirm new password
-        </label>
-        <input
+        <TextField
           id="confirmPassword"
+          label="Confirm new password"
           type="password"
           required
           minLength={8}
           autoComplete="new-password"
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
         />
-      </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+        <FormError message={error} />
 
-      <button
-        type="submit"
-        disabled={isSubmitting || otp.length !== 6}
-        className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-950 disabled:opacity-50"
-      >
-        {isSubmitting ? 'Resetting…' : 'Reset password'}
-      </button>
-    </form>
+        <SubmitButton
+          isSubmitting={isSubmitting}
+          loadingLabel="Resetting…"
+          disabled={otp.length !== 6}
+        >
+          Reset password
+        </SubmitButton>
+      </form>
+    </AuthShell>
   );
 }
 
 export default function ResetPasswordConfirmPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6">
-      <Suspense fallback={null}>
-        <ResetPasswordConfirmForm />
-      </Suspense>
-    </main>
+    <Suspense fallback={null}>
+      <ResetPasswordConfirmForm />
+    </Suspense>
   );
 }

@@ -1,0 +1,3 @@
+{
+  "buildCommand": "npm run migrate:deploy --workspace=@kindred/db && npm run build --workspace=@kindred/web"
+}

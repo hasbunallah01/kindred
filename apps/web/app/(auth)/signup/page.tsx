@@ -1,12 +1,35 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { TextField } from '@/components/auth/TextField';
+import { FormError } from '@/components/auth/FormError';
+import { SubmitButton } from '@/components/auth/SubmitButton';
+
+// Public username validation — applied client-side before submit, and
+// mirrored server-side via Better Auth's `additionalFields` transform
+// (apps/web/lib/auth.ts) which lowercases any incoming value, plus the
+// Prisma unique constraint (packages/db/schema.prisma) which surfaces
+// "username already taken" through Better Auth's standard error channel.
+//
+// Rules: 3-20 chars, lowercase, [a-z0-9_] only, no leading/trailing
+// underscore. The regex enforces all of those constraints by
+// construction — the leading and trailing [a-z0-9] anchors handle the
+// no-edge-underscore rule, the character class handles allowed chars,
+// and the {1,18} middle bound forces length 3-20 (1 leading + 1-18
+// middle + 1 trailing). Auto-lowercasing on change keeps the input in
+// sync with what the server will store.
+const USERNAME_PATTERN = /^[a-z0-9][a-z0-9_]{1,18}[a-z0-9]$/;
+const USERNAME_HELPER =
+  '3–20 characters. Lowercase letters, numbers, and underscores. Cannot start or end with an underscore.';
 
 export default function SignUpPage() {
   const router = useRouter();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -17,6 +40,15 @@ export default function SignUpPage() {
     event.preventDefault();
     setError(null);
 
+    // Username format guard — the input pattern attribute already blocks
+    // bad characters at the keyboard level, but defence in depth: re-check
+    // here so a programmatic submit or a browser that doesn't enforce
+    // pattern still produces a clear error message.
+    if (!USERNAME_PATTERN.test(username)) {
+      setError(USERNAME_HELPER);
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
@@ -24,14 +56,9 @@ export default function SignUpPage() {
 
     setIsSubmitting(true);
 
-    // Better Auth's sign-up creates the user (emailVerified: false) and
-    // establishes a session immediately (unverified accounts can still hold
-    // a session — see Blueprint Section 4). The emailOTP plugin's
-    // sendVerificationOnSignUp config (apps/web/lib/auth.ts) sends the OTP
-    // through the existing Resend adapter automatically — nothing else to
-    // wire here.
     const { error: signUpError } = await authClient.signUp.email({
       name,
+      username,
       email,
       password,
     });
@@ -47,85 +74,94 @@ export default function SignUpPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6">
-      <form
-        onSubmit={handleSubmit}
-        className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-neutral-800 bg-neutral-900 p-6"
-      >
-        <h1 className="text-xl font-semibold tracking-tight">Create your account</h1>
+    <AuthShell
+      title="Create your account"
+      description="Start remembering the people behind your community."
+      backHref="/"
+      backLabel="← Back to home"
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <TextField
+          id="name"
+          label="Full name"
+          type="text"
+          required
+          autoComplete="name"
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="name" className="text-sm text-neutral-400">
-            Full name
-          </label>
-          <input
-            id="name"
-            type="text"
-            required
-            autoComplete="name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <TextField
+          id="username"
+          label="Username"
+          type="text"
+          required
+          // Constrain the input to allowed characters at the keyboard
+          // level. The pattern attribute is a *soft* hint — most browsers
+          // show a tooltip on submit if the value doesn't match, but they
+          // don't block the input itself. The server-side mirror lives
+          // in apps/web/lib/auth.ts (transform: input) and the
+          // authoritative check is the regex in handleSubmit above.
+          pattern="[a-z0-9_]+"
+          minLength={3}
+          maxLength={20}
+          autoComplete="username"
+          spellCheck={false}
+          value={username}
+          onChange={(event) => setUsername(event.target.value.toLowerCase())}
+          helper={USERNAME_HELPER}
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="email" className="text-sm text-neutral-400">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <TextField
+          id="email"
+          label="Email Address"
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="password" className="text-sm text-neutral-400">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <TextField
+          id="password"
+          label="Password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          helper="At least 8 characters."
+        />
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="confirmPassword" className="text-sm text-neutral-400">
-            Confirm password
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
-          />
-        </div>
+        <TextField
+          id="confirmPassword"
+          label="Confirm password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+        />
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        <FormError message={error} />
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-950 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Creating account…' : 'Create account'}
-        </button>
+        <SubmitButton isSubmitting={isSubmitting} loadingLabel="Creating account…">
+          Create account
+        </SubmitButton>
+
+        <p className="pt-1 text-center text-sm text-text-muted">
+          Already have an account?{' '}
+          <Link
+            href="/login"
+            className="font-medium text-brand-primary transition-colors hover:text-brand-primary-hover"
+          >
+            Sign in
+          </Link>
+        </p>
       </form>
-    </main>
+    </AuthShell>
   );
 }
