@@ -6,7 +6,6 @@ import {
   Heart,
   Sparkles,
   MessageSquare,
-  Plus,
   Brain,
   Bell,
   ArrowRight,
@@ -17,7 +16,6 @@ import { prisma } from '@kindred/db';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import { FaTelegram } from 'react-icons/fa6';
 
 // Kindred Mind dashboard — the primary authenticated product surface.
 //
@@ -101,37 +99,47 @@ export default async function DashboardPage() {
   const greeting = greetingFor(new Date());
 
   return (
-    <DashboardShell username={username} email={email}>
+    <DashboardShell
+      username={username}
+      email={email}
+      // The "Connect another community" button now lives in the
+      // dashboard's top-right header (per the wireframe), not in
+      // the main content row next to the greeting. Pass it as a
+      // topRightAction so the shell renders it on desktop next to
+      // the brand mark, and not at all on mobile (where the
+      // hamburger drawer carries the nav).
+      topRightAction={
+        community
+          ? {
+              href: '/onboarding/group',
+              label: 'Connect another community',
+            }
+          : null
+      }
+    >
       <div className="flex flex-col gap-8">
         {/* ==================== HEADER ==================== */}
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
-              {greeting}, {username ?? 'there'}
-            </h1>
-            <p className="text-sm text-text-secondary sm:text-base">
-              {community
-                ? 'Your community memory is beginning to take shape.'
-                : 'Connect your first community to start building memory.'}
-            </p>
-          </div>
-          {community && (
-            <Link
-              href="/onboarding/group"
-              className="inline-flex items-center justify-center gap-1.5 self-start rounded-input border border-border bg-white px-3.5 py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-surface sm:self-auto"
-            >
-              <Plus className="h-4 w-4" />
-              Connect another community
-            </Link>
-          )}
+        <header className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
+            {greeting}, {username ?? 'there'}
+          </h1>
+          <p className="text-sm text-text-secondary sm:text-base">
+            {community
+              ? 'Your community memory is beginning to take shape.'
+              : 'Connect your first community to start building memory.'}
+          </p>
         </header>
 
         {/* ==================== CONNECTED COMMUNITY (or WELCOME) ==================== */}
         {community ? (
           <section className="flex flex-col gap-3 rounded-card border border-border bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-input bg-brand-primary/10 text-brand-primary">
-                <FaTelegram className="h-5 w-5" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-input bg-purple-light p-2">
+                <img
+                  src="/brand/platforms/telegram.jpg"
+                  alt="Telegram logo"
+                  className="h-8 w-8 object-contain"
+                />
               </div>
               <div className="flex min-w-0 flex-col">
                 <span className="truncate text-base font-semibold text-text-primary">
@@ -139,7 +147,7 @@ export default async function DashboardPage() {
                 </span>
                 <span className="flex items-center gap-1.5 text-xs text-text-secondary">
                   <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-                  Connected &middot; Learning
+                  Connected just now &middot; Learning
                 </span>
               </div>
             </div>

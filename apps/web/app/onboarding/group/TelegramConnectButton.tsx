@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { PlatformCard } from '@/components/dashboard/PlatformCard';
-import { FaTelegram } from 'react-icons/fa6';
 import { FormError } from '@/components/auth/FormError';
 
 // Client-side wrapper for the Telegram platform card on
@@ -100,7 +99,7 @@ export function TelegramConnectButton() {
       >
         <PlatformCard
           name="Telegram"
-          icon={<FaTelegram className="h-5 w-5" />}
+          iconSrc="/brand/platforms/telegram.jpg"
           active
           ctaLabel={isConnecting ? 'Opening Telegram…' : 'Connect'}
           onActivate={handleClick}

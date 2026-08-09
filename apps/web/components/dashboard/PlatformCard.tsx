@@ -1,21 +1,32 @@
 import { forwardRef } from 'react';
-import type { ReactNode } from 'react';
 import { ArrowRight } from 'lucide-react';
 
 // Reusable platform card used on /onboarding/group to display each
 // community source (Telegram, Discord, X, Slack). Two visual states:
-//   - `active=true`  → primary purple border, clickable, CTA button
+//   - `active=true`  → primary purple border, clickable, plain
+//                       purple "Connect →" text (not a pill button —
+//                       the wireframe keeps the CTA quiet so the
+//                       icon stays the visual anchor)
 //   - `active=false` → muted, "Coming soon" badge, no interaction
 //
-// The card is intentionally a square-ish aspect on desktop (the
-// reference lays four of them in a 2×2 grid) and a wide rectangle on
-// mobile (the reference stacks them vertically with comfortable
-// horizontal margins). Spacing and typography follow the same
-// Design Foundation tokens as the rest of the app.
+// The icon is now an IMAGE (the official brand mark for each
+// platform, supplied by the user) rather than a react-icons glyph.
+// Brand marks read at a glance even at small sizes; react-icons'
+// line-style glyphs needed to be drawn at 32px+ to feel
+// proportional, and the wireframe's cards are not that large. The
+// user-supplied PNG/JPEG assets are saved under
+// apps/web/public/brand/platforms/.
+//
+// Sizing follows the wireframe: the icon container is 64px (h-16
+// w-16) on both viewports — large enough to feel deliberate,
+// small enough that the 2x2 grid still fits comfortably on a
+// 360px-wide phone. The image inside is 48px (h-12 w-12) so it
+// sits centered with a small, even margin around it.
 
 export interface PlatformCardProps {
   name: string;
-  icon: ReactNode;
+  /** Path to the brand mark image (e.g. "/brand/platforms/telegram.jpg"). */
+  iconSrc: string;
   active: boolean;
   ctaLabel?: string;
   comingSoonLabel?: string;
@@ -32,7 +43,7 @@ export const PlatformCard = forwardRef<HTMLDivElement, PlatformCardProps>(
   function PlatformCard(
     {
       name,
-      icon,
+      iconSrc,
       active,
       ctaLabel = 'Connect',
       comingSoonLabel = 'Coming soon',
@@ -43,15 +54,22 @@ export const PlatformCard = forwardRef<HTMLDivElement, PlatformCardProps>(
     ref,
   ) {
     // Inactive state: muted card with a "Coming soon" badge. No
-    // interaction, no focus ring.
+    // interaction, no focus ring. The brand mark image keeps its
+    // built-in gray treatment (the user supplied the Slack/X/Discord
+    // marks already desaturated) so we just place it on a soft
+    // white square — no color filter needed.
     if (!active) {
       return (
         <div
           ref={ref}
-          className="relative flex h-full w-full flex-col items-center gap-3 rounded-card border border-border bg-surface/60 p-6 opacity-70 sm:flex-row sm:items-center sm:gap-4 sm:p-5"
+          className="relative flex h-full w-full flex-col items-center gap-3 rounded-card border border-border bg-surface/60 p-5 opacity-80 sm:flex-row sm:items-center sm:gap-4 sm:p-5"
         >
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-input bg-white text-text-muted">
-            {icon}
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-input bg-white p-2.5">
+            <img
+              src={iconSrc}
+              alt={`${name} logo`}
+              className="h-12 w-12 object-contain"
+            />
           </div>
           <div className="flex flex-1 flex-col items-center gap-1 text-center sm:items-start sm:text-left">
             <span className="text-base font-semibold text-text-primary">
@@ -68,15 +86,22 @@ export const PlatformCard = forwardRef<HTMLDivElement, PlatformCardProps>(
       );
     }
 
-    // Active state: white card with the brand-purple border, the platform
-    // icon in a soft purple wash, the name, an optional description,
-    // and a "Connect →" call-to-action. Renders as an <a> when href is
-    // given (the Telegram deeplink), or a <button> when onActivate is
-    // given (placeholder for future platforms that open an in-app flow).
+    // Active state: white card with the brand-purple border, the
+    // brand mark on a soft purple wash (the brand-primary is the
+    // new brighter #6C5CE7, so the soft wash uses the new
+    // purple-light #EDE9FE for an even tint), the platform name,
+    // an optional description, and a plain "Connect →" call to
+    // action in purple text. The CTA is plain text (not a filled
+    // pill button) per the wireframe — the icon is the visual
+    // anchor, the CTA should not compete with it.
     const inner = (
       <>
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-input bg-brand-primary/10 text-brand-primary">
-          {icon}
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-input bg-purple-light p-2.5">
+          <img
+            src={iconSrc}
+            alt={`${name} logo`}
+            className="h-12 w-12 object-contain"
+          />
         </div>
         <div className="flex flex-1 flex-col items-center gap-1 text-center sm:items-start sm:text-left">
           <span className="text-base font-semibold text-text-primary">
@@ -86,7 +111,7 @@ export const PlatformCard = forwardRef<HTMLDivElement, PlatformCardProps>(
             <span className="text-xs text-text-secondary">{description}</span>
           )}
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-primary px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors group-hover:bg-brand-primary-hover">
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-primary transition-colors group-hover:text-brand-primary-hover">
           {ctaLabel}
           <ArrowRight className="h-3.5 w-3.5" />
         </span>
@@ -94,7 +119,7 @@ export const PlatformCard = forwardRef<HTMLDivElement, PlatformCardProps>(
     );
 
     const baseClass =
-      'group relative flex h-full w-full flex-col items-center gap-3 rounded-card border border-brand-primary bg-white p-6 text-left shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-primary/40 sm:flex-row sm:items-center sm:gap-4 sm:p-5';
+      'group relative flex h-full w-full flex-col items-center gap-3 rounded-card border border-brand-primary bg-white p-5 text-left shadow-sm transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-primary/40 sm:flex-row sm:items-center sm:gap-4 sm:p-5';
 
     if (href) {
       return (

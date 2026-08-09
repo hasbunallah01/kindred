@@ -12,16 +12,20 @@ import {
   LogOut,
   Menu,
   X,
-  Plus,
+  ChevronDown,
 } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
 
 // Shared shell for every authenticated /dashboard/* page. Two
 // presentations share the same component:
-//   - Desktop: a 240px fixed left sidebar with the brand mark, the
-//     primary nav, and a user-profile footer that includes sign-out.
-//   - Mobile: a compact top header (logo + hamburger + connect CTA)
-//     that opens a slide-down drawer with the same nav and footer.
+//   - Desktop: a 240px fixed left sidebar with the brand mark and
+//     the primary nav. A top header (rendered to the right of the
+//     sidebar) carries the page-level "Connect another community"
+//     action supplied by the page.
+//   - Mobile: a compact top header (logo + hamburger) that opens a
+//     slide-down drawer with the same nav. Per the wireframe, the
+//     mobile header has NO connect button — the action is reached
+//     through the dashboard's content area instead.
 //
 // The sidebar is the dashboard's contextual onboarding — by living
 // inside the actual product shell, it teaches the user what each
@@ -35,6 +39,16 @@ export interface DashboardShellProps {
   username: string | null;
   email: string | null;
   children: React.ReactNode;
+  /**
+   * Optional page-level action to render in the desktop top header
+   * (e.g. "Connect another community"). Pass `null` or omit to
+   * render nothing in that slot. Not rendered on mobile — the
+   * wireframe keeps mobile headers quiet.
+   */
+  topRightAction?: {
+    href: string;
+    label: string;
+  } | null;
 }
 
 interface NavItem {
@@ -51,10 +65,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="h-4 w-4" /> },
 ];
 
-export function DashboardShell({ username, email, children }: DashboardShellProps) {
+export function DashboardShell({
+  username,
+  email,
+  children,
+  topRightAction = null,
+}: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = async () => {
@@ -87,7 +107,7 @@ export function DashboardShell({ username, email, children }: DashboardShellProp
               onClick={() => setDrawerOpen(false)}
               className={`flex items-center gap-3 rounded-input px-3 py-2 text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-brand-primary/10 text-brand-primary'
+                  ? 'bg-purple-light text-brand-primary'
                   : 'text-text-secondary hover:bg-surface hover:text-text-primary'
               }`}
             >
@@ -104,29 +124,48 @@ export function DashboardShell({ username, email, children }: DashboardShellProp
     </ul>
   );
 
-  // The user-profile footer (avatar initial + name/email + sign-out),
-  // again shared between the desktop sidebar and the mobile drawer.
-  const UserFooter = (
-    <div className="mt-auto flex items-center gap-3 rounded-input border border-border bg-surface px-3 py-2.5">
+  // The profile pill, simplified per the wireframe: avatar
+  // initial + username + chevron, no email line, no inline sign-out
+  // button. Sign-out is in the dropdown menu (matches the
+  // "dropdown" shape the wireframe implies with the chevron).
+  const ProfilePill = (
+    <button
+      type="button"
+      onClick={() => setProfileOpen((open) => !open)}
+      aria-haspopup="menu"
+      aria-expanded={profileOpen}
+      className="flex w-full items-center gap-3 rounded-input border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:bg-white"
+    >
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-primary text-sm font-semibold text-white">
         {(username ?? email ?? '?').charAt(0).toUpperCase()}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-semibold text-text-primary">
-          {username ?? 'You'}
-        </span>
-        {email && (
-          <span className="truncate text-xs text-text-secondary">{email}</span>
-        )}
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
+        {username ?? 'You'}
+      </span>
+      <ChevronDown
+        className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${
+          profileOpen ? 'rotate-180' : ''
+        }`}
+      />
+    </button>
+  );
+
+  const ProfileMenu = profileOpen && (
+    <div className="mt-2 rounded-input border border-border bg-background p-2 shadow-sm">
+      <div className="px-2 py-1.5 text-xs text-text-muted">
+        Signed in as
+        <div className="truncate text-sm font-medium text-text-primary">
+          {email ?? username ?? '—'}
+        </div>
       </div>
       <button
         type="button"
         onClick={handleSignOut}
         disabled={isSigningOut}
-        aria-label="Sign out"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-input text-text-muted transition-colors hover:bg-white hover:text-text-primary disabled:opacity-50"
+        className="mt-1 flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-sm text-text-primary transition-colors hover:bg-surface disabled:opacity-50"
       >
-        <LogOut className="h-4 w-4" />
+        <LogOut className="h-4 w-4 text-text-muted" />
+        Sign out
       </button>
     </div>
   );
@@ -143,8 +182,25 @@ export function DashboardShell({ username, email, children }: DashboardShellProp
           />
         </Link>
         <nav className="flex-1">{NavLinks}</nav>
-        {UserFooter}
+        <div className="mt-auto">
+          {ProfilePill}
+          {ProfileMenu}
+        </div>
       </aside>
+
+      {/* ==================== DESKTOP TOP HEADER (page-level actions) ==================== */}
+      {topRightAction && (
+        <div className="sticky top-0 z-30 hidden border-b border-border bg-background/95 backdrop-blur sm:block">
+          <div className="ml-60 flex h-16 items-center justify-end px-8">
+            <Link
+              href={topRightAction.href}
+              className="inline-flex items-center gap-1.5 rounded-input border border-border bg-white px-3.5 py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-surface"
+            >
+              {topRightAction.label}
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ==================== MOBILE TOP HEADER ==================== */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:hidden">
@@ -155,23 +211,14 @@ export function DashboardShell({ username, email, children }: DashboardShellProp
             className="h-8 w-auto"
           />
         </Link>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/onboarding/group"
-            className="inline-flex items-center gap-1 rounded-input bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-primary-hover"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Connect
-          </Link>
-          <button
-            type="button"
-            onClick={() => setDrawerOpen((open) => !open)}
-            aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
-            className="flex h-9 w-9 items-center justify-center rounded-input text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
-          >
-            {drawerOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setDrawerOpen((open) => !open)}
+          aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+          className="flex h-9 w-9 items-center justify-center rounded-input text-text-secondary transition-colors hover:bg-surface hover:text-text-primary"
+        >
+          {drawerOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </header>
 
       {/* Mobile drawer — full-width sheet that drops down from the
@@ -187,13 +234,20 @@ export function DashboardShell({ username, email, children }: DashboardShellProp
           />
           <div className="relative flex h-full flex-col gap-6 border-b border-border bg-background px-5 pb-6 pt-20">
             <nav>{NavLinks}</nav>
-            {UserFooter}
+            <div>
+              {ProfilePill}
+              {ProfileMenu}
+            </div>
           </div>
         </div>
       )}
 
       {/* ==================== MAIN CONTENT ==================== */}
-      <main className="mx-auto w-full max-w-5xl px-4 pb-16 pt-6 sm:ml-60 sm:px-8 sm:pt-10">
+      <main
+        className={`mx-auto w-full max-w-5xl px-4 pb-16 pt-6 sm:ml-60 sm:px-8 ${
+          topRightAction ? 'sm:pt-8' : 'sm:pt-10'
+        }`}
+      >
         {children}
       </main>
     </div>
