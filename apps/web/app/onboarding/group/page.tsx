@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
-import { FaDiscord, FaXTwitter, FaSlack } from 'react-icons/fa6';
 import { auth } from '@/lib/auth';
 import { prisma } from '@kindred/db';
 import { PlatformCard } from '@/components/dashboard/PlatformCard';
@@ -61,23 +60,27 @@ export default async function OnboardingGroupPage() {
         {/* Platform grid — Telegram is the only active card, the
             other three render as muted "Coming soon" placeholders
             so the creator understands future platform support is
-            coming without being offered a choice that would fail. */}
+            coming without being offered a choice that would fail.
+            All four icons are the official brand marks saved to
+            /brand/platforms/ — the active Telegram card uses the
+            full-color mark on a soft purple wash, the inactive
+            cards use the user's pre-grayscaled marks on white. */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <TelegramConnectButton />
 
           <PlatformCard
             name="Discord"
-            icon={<FaDiscord className="h-5 w-5" />}
+            iconSrc="/brand/platforms/discord.png"
             active={false}
           />
           <PlatformCard
             name="X (Twitter)"
-            icon={<FaXTwitter className="h-5 w-5" />}
+            iconSrc="/brand/platforms/x.png"
             active={false}
           />
           <PlatformCard
             name="Slack"
-            icon={<FaSlack className="h-5 w-5" />}
+            iconSrc="/brand/platforms/slack.jpg"
             active={false}
           />
         </div>

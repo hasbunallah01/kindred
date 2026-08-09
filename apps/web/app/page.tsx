@@ -541,7 +541,13 @@ function DashboardShowcase() {
           ))}
         </ul>
 
-        <div className="lg:-rotate-1">
+        {/* Previously lg:-rotate-1 (a -1deg tilt) — the slight rotation
+            made the section read as off-balance / "floating on water"
+            against an otherwise flat page. The mockup now sits flush
+            with the rest of the layout, matching the calmer
+            "the dashboard is a tool, not a flourish" tone of the
+            rest of the page. */}
+        <div>
           <DashboardMockup />
         </div>
       </div>

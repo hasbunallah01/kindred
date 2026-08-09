@@ -16,10 +16,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Brand
-        'brand-primary': '#5B3CC4',
-        'brand-primary-hover': '#4A2FA8',
-        'brand-primary-active': '#3F278F',
+        // Brand — values per the Kindred Mind Design Foundation
+        // (docs/DESIGN_FOUNDATION.md) and the Onboarding & Dashboard
+        // wireframe. brand-primary is the brighter, more vibrant
+        // #6C5CE7 (was #5B3CC4 — too indigo/deep). purple-light is
+        // the soft wash used for active platform-card icon
+        // backgrounds, was previously just `bg-brand-primary/10`
+        // (uneven math).
+        'brand-primary': '#6C5CE7',
+        'brand-primary-hover': '#5A4BD1',
+        'brand-primary-active': '#4A3DBA',
+        'purple-light': '#EDE9FE',
         coral: '#FF7A6B',
         'accent-gold': '#F6B73C',
 
@@ -29,13 +36,15 @@ const config: Config = {
         border: '#E5E7EB',
         'border-strong': '#D1D5DB',
 
-        // Text
-        'text-primary': '#111827',
+        // Text — text-primary was #111827 (gray-900), too dark for
+        // the wireframe's soft slate feel. Now slate-800.
+        'text-primary': '#1F2937',
         'text-secondary': '#6B7280',
         'text-muted': '#9CA3AF',
 
-        // Status
-        success: '#22C55E',
+        // Status — success was #22C55E (green-500), the wireframe
+        // uses the slightly deeper emerald-500 #10B981.
+        success: '#10B981',
         warning: '#F59E0B',
         danger: '#EF4444',
         info: '#3B82F6',
