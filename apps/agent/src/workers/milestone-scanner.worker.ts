@@ -1,44 +1,25 @@
-import { Queue, Worker } from 'bullmq';
-import IORedis from 'ioredis';
+// This file used to define a BullMQ Worker for the milestone-scanner
+// scheduled job. After the BullMQ removal (agent refactor), the
+// dispatcher function lives in apps/agent/src/handlers.ts
+// (runMilestoneScan) and is invoked on a setInterval from
+// apps/agent/src/index.ts. The two helpers (findUpcomingAnniversaries,
+// emitMilestoneEvents) and the lookahead constant stay here because
+// they're the canonical owners of the anniversary-dedupe logic; the
+// handlers module imports them by name via dynamic import.
 import { prisma } from '@kindred/db';
-import { QUEUE_NAMES } from '@kindred/shared';
 
-// REDIS_URL is guaranteed to be set by the agent's startup gate
-// (apps/agent/src/index.ts validateRequiredEnv), so no fallback here:
-// falling back to redis://localhost:6379 on a real VPS would silently
-// hang the worker trying to reach a Redis that isn't running. The
-// non-null assertion documents that contract.
-const connection = new IORedis(process.env.REDIS_URL!, {
-  maxRetriesPerRequest: null,
-});
+// Re-export the scheduler entry point for any caller that still
+// imports from the old path.
+export { runMilestoneScan } from '../handlers';
 
-// Checkpoint 51: daily cadence. Anniversaries are calendar-day events,
-// and the lookahead window is in days, so a sub-daily run rate is
-// wasteful. The other scheduled workers (digest sender 15m, standing
-// check 1h) pick their cadence off the freshness of their underlying
-// signal; the milestone signal changes at most once per member per
-// day, so daily is the natural fit.
-const SCAN_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const REPEAT_JOB_ID = 'milestone-scanner-recurring';
-
+// Checkpoint 51: daily cadence used to live here but moved to
+// handlers.ts SCHEDULES — keep that single source of truth.
+//
 // How far ahead to look for upcoming anniversaries. Seven days gives
 // the Mind and any downstream digest path a reasonable lead time to
 // weave the milestone into a check-in or insight, while still being
 // short enough that the daily run never accumulates a long backlog.
-const MILESTONE_LOOKAHEAD_DAYS = 7;
-
-const milestoneScannerQueue = new Queue(QUEUE_NAMES.MILESTONE_SCANNER, { connection });
-
-export async function scheduleMilestoneScanner(): Promise<void> {
-  await milestoneScannerQueue.add(
-    'scan-anniversaries',
-    {},
-    {
-      repeat: { every: SCAN_INTERVAL_MS },
-      jobId: REPEAT_JOB_ID,
-    },
-  );
-}
+export const MILESTONE_LOOKAHEAD_DAYS = 7;
 
 // Checkpoint 51: returns the start-of-day for the Nth anniversary of
 // `firstSeenAt`, computed in UTC so the result is stable across
@@ -52,7 +33,7 @@ function anniversaryOn(firstSeenAt: Date, yearsSinceJoin: number): Date {
   return anniversary;
 }
 
-interface AnniversaryCandidate {
+export interface AnniversaryCandidate {
   memberId: string;
   communityId: string;
   displayName: string;
@@ -60,7 +41,7 @@ interface AnniversaryCandidate {
   yearsSinceJoin: number;
 }
 
-async function findUpcomingAnniversaries(
+export async function findUpcomingAnniversaries(
   communityId: string,
   now: Date,
   lookaheadCutoff: Date,
@@ -154,7 +135,7 @@ async function findAlreadyEmittedMilestones(
   return emitted;
 }
 
-async function emitMilestoneEvents(candidates: AnniversaryCandidate[]): Promise<number> {
+export async function emitMilestoneEvents(candidates: AnniversaryCandidate[]): Promise<number> {
   if (candidates.length === 0) {
     return 0;
   }
@@ -200,35 +181,3 @@ async function emitMilestoneEvents(candidates: AnniversaryCandidate[]): Promise<
 
   return toCreate.length;
 }
-
-export const milestoneScannerWorker = new Worker(
-  QUEUE_NAMES.MILESTONE_SCANNER,
-  async () => {
-    const communities = await prisma.community.findMany({
-      where: { status: 'active' },
-      select: { id: true },
-    });
-
-    let totalEmitted = 0;
-
-    for (const community of communities) {
-      const now = new Date();
-      const lookaheadCutoff = new Date(
-        now.getTime() + MILESTONE_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000,
-      );
-
-      const candidates = await findUpcomingAnniversaries(community.id, now, lookaheadCutoff);
-      const emitted = await emitMilestoneEvents(candidates);
-      totalEmitted += emitted;
-    }
-
-    if (totalEmitted > 0) {
-      console.log(`milestone-scanner emitted ${totalEmitted} milestone event(s).`);
-    }
-  },
-  { connection },
-);
-
-milestoneScannerWorker.on('failed', (job, error) => {
-  console.error(`milestone-scanner job ${job?.id ?? 'unknown'} failed:`, error);
-});

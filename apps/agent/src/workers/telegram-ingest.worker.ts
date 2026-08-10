@@ -1,7 +1,4 @@
-import { Worker, type Job } from 'bullmq';
-import IORedis from 'ioredis';
 import { prisma } from '@kindred/db';
-import { QUEUE_NAMES, type TelegramIngestJobData } from '@kindred/shared';
 import { createConversation, setStandingInstructions } from '@kindred/minds-client';
 import { sendMessage } from '../telegram/bot-api';
 import {
@@ -18,39 +15,24 @@ import {
 // for this task. If the production URL ever moves, change it here.
 const DASHBOARD_URL = 'https://kindred.haybee.xyz/dashboard';
 
-// maxRetriesPerRequest: null is required by BullMQ for Worker connections
-// (it throws otherwise) — a worker is a background process that's
-// expected to keep retrying indefinitely, unlike the webhook route's
-// producer connection (apps/web/app/api/telegram/webhook/route.ts),
-// which intentionally leaves this at the default.
-//
-// REDIS_URL is guaranteed to be set by the agent's startup gate
-// (apps/agent/src/index.ts validateRequiredEnv), so no fallback here:
-// falling back to redis://localhost:6379 on a real VPS would silently
-// hang the worker trying to reach a Redis that isn't running. The
-// non-null assertion documents that contract.
-const connection = new IORedis(process.env.REDIS_URL!, {
-  maxRetriesPerRequest: null,
-});
-
-// Minimal shape of a Telegram Update — only the fields this worker
+// Minimal shape of a Telegram Update — only the fields this module
 // actually reads. Full message processing (join/first-interaction,
 // creator-interaction, participation) is Checkpoints 35-37, not here.
 //
-// `my_chat_member` is the new shape this worker added for the P0
+// `my_chat_member` is the new shape this module added for the P0
 // onboarding flow (Steps 3 and 4) — Telegram sends it whenever the
 // bot itself is added to, promoted in, or removed from a group chat.
 //
 // ID fields are typed as `string`, not `number`, to preserve precision
 // for large Telegram identifiers through the JSON pipeline. The
 // Vercel webhook (apps/web/app/api/telegram/webhook/route.ts) converts
-// every `id` field to a string before enqueuing into BullMQ, because
-// `JSON.stringify` (which BullMQ uses to persist job data in Redis)
-// would otherwise lose precision on any integer exceeding
-// `Number.MAX_SAFE_INTEGER` (2^53 - 1). At the database boundary, the
-// worker calls `BigInt(value)` — `BigInt()` accepts both numbers and
-// strings, so this type change is lossless.
-interface TelegramUpdate {
+// every `id` field to a string before POSTing the update to the agent,
+// because `JSON.stringify` would otherwise lose precision on any
+// integer exceeding `Number.MAX_SAFE_INTEGER` (2^53 - 1). At the
+// database boundary, the handlers call `BigInt(value)` — `BigInt()`
+// accepts both numbers and strings, so this type change is lossless.
+export interface TelegramUpdate {
+  update_id?: number;
   message?: {
     text?: string;
     chat: {
@@ -174,6 +156,8 @@ const PRIVATE_DEFAULT_REPLY =
 // register as distinct participation.
 const PARTICIPATION_WINDOW_MS = 30 * 60 * 1000;
 
+export { PARTICIPATION_WINDOW_MS };
+
 async function handleLinkingCode(
   code: string,
   chatId: string,
@@ -243,12 +227,13 @@ async function handleLinkingCode(
   // value is what every later sendMessage/getMessageHistory call needs.
   //
   // Known limitation, not silently glossed over: if createConversation()
-  // throws here, this job fails and BullMQ may retry it — but on retry,
-  // the Community row already exists, so the update above re-enters the
-  // "already linked" branch of the outer processor rather than retrying
-  // this call. A community could end up permanently missing its Mind
-  // conversation if this specific call fails. Acceptable for this
-  // checkpoint's scope; a real retry/backfill path isn't built here.
+  // throws here, this function throws. The HTTP layer returns 500 to
+  // Telegram, which will retry the same update_id. The dedup Map
+  // records the failed attempt so a true duplicate retry is suppressed
+  // — the retry still produces a successful createConversation() if
+  // Minds just had a transient blip, or the retry will fail again
+  // (and keep retrying) until it works. A real retry/backfill path
+  // isn't built here.
   if (!community.mindsConversationId) {
     const { alias } = await createConversation();
     // Checkpoint 45: established once, right here, at the same moment
@@ -340,7 +325,7 @@ async function handleStartCommand(
 // Skipped for non-private chats: in groups the bot must never reply to
 // any non-command message (Blueprint Section 5.3: groups are observed
 // silently). The chat.type === 'private' check is the only guard needed
-// because the caller (handlePrivateMessage below) is only invoked from
+// because the caller (handleTelegramUpdate below) is only invoked from
 // the private branch.
 async function handlePrivateDefaultReply(fromTelegramUserId: string): Promise<void> {
   try {
@@ -403,7 +388,7 @@ async function handlePrivateDefaultReply(fromTelegramUserId: string): Promise<vo
 // groups), we pick the most recently created one — the assumption is
 // a creator in onboarding has exactly one in-flight request, and the
 // latest one is the one they intend to use.
-async function findPendingLinkRequestFor(
+export async function findPendingLinkRequestFor(
   telegramUserId: bigint,
 ): Promise<{ id: string; creatorId: string } | null> {
   const request = await prisma.telegramLinkRequest.findFirst({
@@ -610,189 +595,192 @@ async function handleMyChatMember(update: NonNullable<TelegramUpdate['my_chat_me
   }
 }
 
-export const telegramIngestWorker = new Worker<TelegramIngestJobData>(
-  QUEUE_NAMES.TELEGRAM_INGEST,
-  async (job: Job<TelegramIngestJobData>) => {
-    if (!isTelegramUpdate(job.data.update)) {
+export { handleMyChatMember, handleStartCommand, handleLinkingCode, handlePrivateDefaultReply };
+
+// ---------------------------------------------------------------------------
+// The single entry point the HTTP server calls. This used to be the
+// body of the BullMQ `Worker<...>('queue-name', async (job) => {...})`
+// processor; it's now a plain async function that takes a parsed
+// Telegram update and dispatches to the right internal handler.
+// The HTTP layer (apps/agent/src/server.ts) is responsible for
+// authenticating the request, deduplicating by update_id, and
+// converting a thrown error into a 500 response.
+// ---------------------------------------------------------------------------
+export async function handleTelegramUpdate(rawUpdate: unknown): Promise<void> {
+  if (!isTelegramUpdate(rawUpdate)) {
+    return;
+  }
+
+  // P0 onboarding Steps 3 & 4 — handle my_chat_member BEFORE the
+  // message branch. These updates have no `message` field, so the
+  // message branch would silently no-op anyway, but handling them
+  // first is clearer and avoids a misleading "no text" log line.
+  if (rawUpdate.my_chat_member) {
+    await handleMyChatMember(rawUpdate.my_chat_member);
+    return;
+  }
+
+  const message = rawUpdate.message;
+  if (!message?.text) {
+    // No text content — the rule-based extraction above has nothing to
+    // work with. Routed through the flagged-off OpenAI fallback rather
+    // than a silent return; with ENABLE_OPENAI_FALLBACK at its default
+    // (false), this only logs and does nothing further.
+    if (message) {
+      await classifyAmbiguousMessage({ messageType: 'non-text' });
+    }
+    return;
+  }
+
+  // Private chat branch — handles BOTH /start (Step 2) and the
+  // default reply (Step 5). The order matters: /start must be
+  // matched first because a literal "/start" message would
+  // otherwise hit the default-reply branch. startMatch[1] is the
+  // code (or undefined for a bare /start).
+  if (message.chat.type === 'private') {
+    const startMatch = message.text.match(START_COMMAND_PATTERN);
+    if (startMatch) {
+      await handleStartCommand(startMatch[1], message.from?.id);
       return;
     }
-
-    // P0 onboarding Steps 3 & 4 — handle my_chat_member BEFORE the
-    // message branch. These updates have no `message` field, so the
-    // message branch would silently no-op anyway, but handling them
-    // first is clearer and avoids a misleading "no text" log line.
-    if (job.data.update.my_chat_member) {
-      await handleMyChatMember(job.data.update.my_chat_member);
-      return;
+    if (message.from?.id !== undefined) {
+      // Step 5: any other private message gets the dashboard redirect.
+      // Sending is best-effort (see handlePrivateDefaultReply).
+      await handlePrivateDefaultReply(message.from.id);
     }
+    return;
+  }
 
-    const message = job.data.update.message;
-    if (!message?.text) {
-      // No text content — the rule-based extraction above has nothing to
-      // work with. Routed through the flagged-off OpenAI fallback rather
-      // than a silent return; with ENABLE_OPENAI_FALLBACK at its default
-      // (false), this only logs and does nothing further.
-      if (message) {
-        await classifyAmbiguousMessage({ messageType: 'non-text' });
-      }
-      return;
+  const telegramChatId = BigInt(message.chat.id);
+  const community = await prisma.community.findUnique({ where: { telegramChatId } });
+
+  if (!community) {
+    // Not linked yet — the only thing that matters here is a valid
+    // linking code (Checkpoint 31/26). Anything else in an unlinked
+    // group has nowhere to attach a Member to (Community FK is
+    // required), so there's nothing more to do with it yet.
+    const match = message.text.match(LINK_COMMAND_PATTERN);
+    if (match?.[1]) {
+      await handleLinkingCode(
+        match[1].toUpperCase(),
+        message.chat.id,
+        message.chat.title,
+        message.from?.id,
+      );
     }
+    return;
+  }
 
-    // Private chat branch — handles BOTH /start (Step 2) and the
-    // default reply (Step 5). The order matters: /start must be
-    // matched first because a literal "/start" message would
-    // otherwise hit the default-reply branch. startMatch[1] is the
-    // code (or undefined for a bare /start).
-    if (message.chat.type === 'private') {
-      const startMatch = message.text.match(START_COMMAND_PATTERN);
-      if (startMatch) {
-        await handleStartCommand(startMatch[1], message.from?.id);
-        return;
-      }
-      if (message.from?.id !== undefined) {
-        // Step 5: any other private message gets the dashboard redirect.
-        // Sending is best-effort (see handlePrivateDefaultReply).
-        await handlePrivateDefaultReply(message.from.id);
-      }
-      return;
-    }
+  // Community is linked — Checkpoint 34: upsert a Member record for
+  // whoever sent this message. firstSeenAt is only set on create; the
+  // update branch intentionally leaves it untouched so repeat messages
+  // never overwrite it, only lastSeenAt.
+  if (!message.from) {
+    return; // No sender info (e.g. a channel post) — nothing to attribute.
+  }
 
-    const telegramChatId = BigInt(message.chat.id);
-    const community = await prisma.community.findUnique({ where: { telegramChatId } });
+  const telegramUserId = BigInt(message.from.id);
+  const displayName =
+    [message.from.first_name, message.from.last_name].filter(Boolean).join(' ') || 'Unknown';
+  const now = new Date();
 
-    if (!community) {
-      // Not linked yet — the only thing that matters here is a valid
-      // linking code (Checkpoint 31/26). Anything else in an unlinked
-      // group has nowhere to attach a Member to (Community FK is
-      // required), so there's nothing more to do with it yet.
-      const match = message.text.match(LINK_COMMAND_PATTERN);
-      if (match?.[1]) {
-        await handleLinkingCode(
-          match[1].toUpperCase(),
-          message.chat.id,
-          message.chat.title,
-          message.from?.id,
-        );
-      }
-      return;
-    }
-
-    // Community is linked — Checkpoint 34: upsert a Member record for
-    // whoever sent this message. firstSeenAt is only set on create; the
-    // update branch intentionally leaves it untouched so repeat messages
-    // never overwrite it, only lastSeenAt.
-    if (!message.from) {
-      return; // No sender info (e.g. a channel post) — nothing to attribute.
-    }
-
-    const telegramUserId = BigInt(message.from.id);
-    const displayName =
-      [message.from.first_name, message.from.last_name].filter(Boolean).join(' ') || 'Unknown';
-    const now = new Date();
-
-    // Checked BEFORE the upsert — this is the only way to know whether the
-    // upsert below is about to create a brand-new Member or update an
-    // existing one (Prisma's upsert result doesn't say which happened).
-    const existingMember = await prisma.member.findUnique({
-      where: {
-        communityId_telegramUserId: {
-          communityId: community.id,
-          telegramUserId,
-        },
-      },
-    });
-    const isNewMember = !existingMember;
-
-    const member = await prisma.member.upsert({
-      where: {
-        communityId_telegramUserId: {
-          communityId: community.id,
-          telegramUserId,
-        },
-      },
-      create: {
+  // Checked BEFORE the upsert — this is the only way to know whether the
+  // upsert below is about to create a brand-new Member or update an
+  // existing one (Prisma's upsert result doesn't say which happened).
+  const existingMember = await prisma.member.findUnique({
+    where: {
+      communityId_telegramUserId: {
         communityId: community.id,
         telegramUserId,
-        telegramUsername: message.from.username,
-        displayName,
-        firstSeenAt: now,
-        lastSeenAt: now,
       },
-      update: {
-        telegramUsername: message.from.username,
-        displayName,
-        lastSeenAt: now,
+    },
+  });
+  const isNewMember = !existingMember;
+
+  const member = await prisma.member.upsert({
+    where: {
+      communityId_telegramUserId: {
+        communityId: community.id,
+        telegramUserId,
       },
-    });
+    },
+    create: {
+      communityId: community.id,
+      telegramUserId,
+      telegramUsername: message.from.username,
+      displayName,
+      firstSeenAt: now,
+      lastSeenAt: now,
+    },
+    update: {
+      telegramUsername: message.from.username,
+      displayName,
+      lastSeenAt: now,
+    },
+  });
 
-    const events = extractEvents({
-      isNewMember,
-      hasRecentParticipation: isNewMember
-        ? false // irrelevant — extractEvents won't check it for a new member
-        : Boolean(
-            await prisma.relationshipEvent.findFirst({
-              where: {
-                memberId: member.id,
-                type: 'participation',
-                occurredAt: { gte: new Date(now.getTime() - PARTICIPATION_WINDOW_MS) },
-              },
-            }),
-          ),
-      messageText: message.text,
-      occurredAt: now,
-    });
+  const events = extractEvents({
+    isNewMember,
+    hasRecentParticipation: isNewMember
+      ? false // irrelevant — extractEvents won't check it for a new member
+      : Boolean(
+          await prisma.relationshipEvent.findFirst({
+            where: {
+              memberId: member.id,
+              type: 'participation',
+              occurredAt: { gte: new Date(now.getTime() - PARTICIPATION_WINDOW_MS) },
+            },
+          }),
+        ),
+    messageText: message.text,
+    occurredAt: now,
+  });
 
-    // Checkpoint 36: was this message the creator replying to a specific
-    // member? Requires community.creatorTelegramUserId to have been
-    // captured already. The /link message that created this Community
-    // is the canonical place (see handleLinkingCode above); for the new
-    // onboarding flow, that value is sourced from
-    // TelegramLinkRequest.creatorTelegramUserId populated at /start
-    // time (handleStartCommand), not from the /link sender.
-    const replyToTelegramUserId = message.reply_to_message?.from
-      ? BigInt(message.reply_to_message.from.id)
-      : undefined;
+  // Checkpoint 36: was this message the creator replying to a specific
+  // member? Requires community.creatorTelegramUserId to have been
+  // captured already. The /link message that created this Community
+  // is the canonical place (see handleLinkingCode above); for the new
+  // onboarding flow, that value is sourced from
+  // TelegramLinkRequest.creatorTelegramUserId populated at /start
+  // time (handleStartCommand), not from the /link sender.
+  const replyToTelegramUserId = message.reply_to_message?.from
+    ? BigInt(message.reply_to_message.from.id)
+    : undefined;
 
-    const creatorInteractionTarget = detectCreatorInteractionTarget({
-      isFromCreator:
-        community.creatorTelegramUserId !== null &&
-        telegramUserId === community.creatorTelegramUserId,
-      replyToTelegramUserId,
-      creatorTelegramUserId: community.creatorTelegramUserId ?? undefined,
-    });
+  const creatorInteractionTarget = detectCreatorInteractionTarget({
+    isFromCreator:
+      community.creatorTelegramUserId !== null &&
+      telegramUserId === community.creatorTelegramUserId,
+    replyToTelegramUserId,
+    creatorTelegramUserId: community.creatorTelegramUserId ?? undefined,
+  });
 
-    if (creatorInteractionTarget !== null) {
-      const repliedToMember = await prisma.member.findUnique({
-        where: {
-          communityId_telegramUserId: {
-            communityId: community.id,
-            telegramUserId: creatorInteractionTarget,
-          },
+  if (creatorInteractionTarget !== null) {
+    const repliedToMember = await prisma.member.findUnique({
+      where: {
+        communityId_telegramUserId: {
+          communityId: community.id,
+          telegramUserId: creatorInteractionTarget,
         },
-      });
+      },
+    });
 
-      if (repliedToMember) {
-        events.push({
-          ...buildCreatorInteractionEvent(message.text, now),
-          memberIdOverride: repliedToMember.id,
-        });
-      }
-    }
-
-    if (events.length > 0) {
-      await prisma.relationshipEvent.createMany({
-        data: events.map((event) => ({
-          memberId: event.memberIdOverride ?? member.id,
-          type: event.type,
-          payload: event.payload,
-          occurredAt: event.occurredAt,
-        })) as never,
+    if (repliedToMember) {
+      events.push({
+        ...buildCreatorInteractionEvent(message.text, now),
+        memberIdOverride: repliedToMember.id,
       });
     }
-  },
-  { connection },
-);
+  }
 
-telegramIngestWorker.on('failed', (job, error) => {
-  console.error(`telegram-ingest job ${job?.id ?? 'unknown'} failed:`, error);
-});
+  if (events.length > 0) {
+    await prisma.relationshipEvent.createMany({
+      data: events.map((event) => ({
+        memberId: event.memberIdOverride ?? member.id,
+        type: event.type,
+        payload: event.payload,
+        occurredAt: event.occurredAt,
+      })) as never,
+    });
+  }
+}

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Kindred agent runtime — long-running processes (workers, Minds SSE listener, scheduled jobs) deployed on the VPS.",
+  "description": "Kindred agent runtime — HTTP server (receives Telegram webhook posts from Vercel), Minds SSE listener, and three in-process scheduled housekeeping loops. Deployed on Railway.",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
@@ -14,9 +14,8 @@
     "@kindred/db": "*",
     "@kindred/minds-client": "*",
     "@kindred/shared": "*",
-    "bullmq": "^5.81.2",
     "eventsource": "^4.1.0",
-    "ioredis": "^5.11.1"
+    "hono": "^4.6.14"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

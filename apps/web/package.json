@@ -16,8 +16,6 @@
     "@kindred/minds-client": "*",
     "@kindred/shared": "*",
     "better-auth": "^1.6.25",
-    "bullmq": "^5.81.2",
-    "ioredis": "^5.11.1",
     "json-bigint": "^1.0.0",
     "lucide-react": "^0.460.0",
     "next": "^15.1.0",

@@ -1,39 +1,23 @@
-import { Queue, Worker } from 'bullmq';
-import IORedis from 'ioredis';
+// This file used to define a BullMQ Worker for the standing-check
+// scheduled job. After the BullMQ removal (agent refactor), the
+// dispatcher function lives in apps/agent/src/handlers.ts
+// (runStandingCheck) and is invoked on a setInterval from
+// apps/agent/src/index.ts. The transitionMemberStatuses helper —
+// which mutates Member.status and emits the resulting
+// RelationshipEvent rows — stays here because it's the canonical
+// owner of the audit logic described by the "active -> quiet ->
+// inactive / returned" comments, and a future refactor that wants
+// to test it in isolation should not have to import the whole
+// agent process. handlers.ts imports it via dynamic import to keep
+// this file's load order independent of the schedulers.
 import { prisma } from '@kindred/db';
-import { QUEUE_NAMES } from '@kindred/shared';
-import { sendMessage } from '@kindred/minds-client';
 
-// REDIS_URL is guaranteed to be set by the agent's startup gate
-// (apps/agent/src/index.ts validateRequiredEnv), so no fallback here:
-// falling back to redis://localhost:6379 on a real VPS would silently
-// hang the worker trying to reach a Redis that isn't running. The
-// non-null assertion documents that contract.
-const connection = new IORedis(process.env.REDIS_URL!, {
-  maxRetriesPerRequest: null,
-});
+// Cadence used to live here but moved to handlers.ts SCHEDULES — keep
+// that single source of truth. Re-export the runStandingCheck symbol
+// for any caller that still imports from the old path.
+export { runStandingCheck } from '../handlers';
 
-// Checkpoint 46: less frequent than the digest sender (Checkpoint 43,
-// 15 minutes) — this is a periodic nudge for the Mind to actively
-// evaluate its standing instructions (Checkpoint 45) against what it
-// already knows, not a delivery mechanism for new event data. Hourly is
-// a reasonable default; Blueprint Section 6.6 doesn't specify an exact
-// cadence.
-const STANDING_CHECK_INTERVAL_MS = 60 * 60 * 1000;
-const REPEAT_JOB_ID = 'mind-standing-check-recurring';
-
-const standingCheckQueue = new Queue(QUEUE_NAMES.MIND_STANDING_CHECK, { connection });
-
-export async function scheduleMindStandingCheck(): Promise<void> {
-  await standingCheckQueue.add(
-    'check-in',
-    {},
-    {
-      repeat: { every: STANDING_CHECK_INTERVAL_MS },
-      jobId: REPEAT_JOB_ID,
-    },
-  );
-}
+export const PARTICIPATION_WINDOW_MS = 30 * 60 * 1000;
 
 // Audit fix: Member.status used to never update — every member stayed
 // 'active' forever, so the standing instructions
@@ -64,7 +48,7 @@ interface MemberStatusBreakdown {
   returned: number;
 }
 
-async function transitionMemberStatuses(communityId: string): Promise<MemberStatusBreakdown> {
+export async function transitionMemberStatuses(communityId: string): Promise<MemberStatusBreakdown> {
   const now = new Date();
   const quietCutoff = new Date(now.getTime() - QUIET_THRESHOLD_MS);
   const inactiveCutoff = new Date(now.getTime() - INACTIVE_THRESHOLD_MS);
@@ -219,39 +203,3 @@ async function transitionMemberStatuses(communityId: string): Promise<MemberStat
   }
   return breakdown;
 }
-
-export const mindStandingCheckWorker = new Worker(
-  QUEUE_NAMES.MIND_STANDING_CHECK,
-  async () => {
-    const communities = await prisma.community.findMany({
-      where: { status: 'active', mindsConversationId: { not: null } },
-    });
-
-    for (const community of communities) {
-      if (!community.mindsConversationId) {
-        continue; // Narrows the type below; the query above already filters this.
-      }
-
-      const breakdown = await transitionMemberStatuses(community.id);
-      const totalMembers = breakdown.active + breakdown.quiet + breakdown.inactive + breakdown.returned;
-
-      // Real deltas now, not just a tracked count — the standing
-      // instructions (who went quiet, who returned) have actual signals
-      // to act on. 'returned' is surfaced as its own line so the Mind
-      // can pick it out specifically; 'active' and 'inactive' are
-      // summarized for context.
-      const checkInMessage =
-        `Check-in for ${community.telegramChatTitle}: ${totalMembers} tracked members ` +
-        `(${breakdown.active} active, ${breakdown.quiet} quiet, ${breakdown.inactive} inactive, ` +
-        `${breakdown.returned} recently returned). Please review your standing instructions ` +
-        'against what you currently know and flag anything noteworthy.';
-
-      await sendMessage(community.mindsConversationId, checkInMessage);
-    }
-  },
-  { connection },
-);
-
-mindStandingCheckWorker.on('failed', (job, error) => {
-  console.error(`mind-standing-check job ${job?.id ?? 'unknown'} failed:`, error);
-});
