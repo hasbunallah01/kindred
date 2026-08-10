@@ -127,6 +127,12 @@ export function startMindsSseListener(
 // here once the Builder API SSE schema is known.
 interface MindsSseEventPayload {
   alias?: string;
+  // The current Minds Builder API emits the assistant's text at the top
+  // level as `messageText` (not nested under `message.content` as the
+  // earlier schema did). Both shapes are accepted here so the listener
+  // works against either the current API or any older build that still
+  // emits the nested shape.
+  messageText?: string;
   message?: {
     role?: string;
     content?: string;
@@ -143,7 +149,10 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
   }
 
   const { alias, message } = payload;
-  const content = message?.content;
+  // Prefer the top-level `messageText` (current Minds API shape); fall
+  // back to the older nested `message.content` so this listener remains
+  // compatible with any older build of the API.
+  const content = payload.messageText ?? message?.content;
 
   if (!alias || !content) {
     console.error('Minds SSE event missing alias or message content, skipping:', payload);
