@@ -42,6 +42,39 @@ function greetingFor(date: Date): string {
   return 'Hello';
 }
 
+// Human-readable "X ago" for the community's "Connected …" line. Uses
+// the platform-native `Intl.RelativeTimeFormat` so no extra dependency
+// is required. Examples:
+//   "just now"   (< 45s)
+//   "5 minutes ago"
+//   "2 hours ago"
+//   "3 days ago"
+//   "2 months ago"
+//   "Jan 15"     (> 1 year)
+function formatConnectedAgo(past: Date): string {
+  const now = Date.now();
+  const diffMs = now - past.getTime();
+  const diffSec = Math.round(diffMs / 1000);
+
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  if (Math.abs(diffSec) < 45) return 'just now';
+  if (Math.abs(diffSec) < 60 * 60) {
+    return rtf.format(-Math.round(diffSec / 60), 'minute');
+  }
+  if (Math.abs(diffSec) < 60 * 60 * 24) {
+    return rtf.format(-Math.round(diffSec / 3600), 'hour');
+  }
+  if (Math.abs(diffSec) < 60 * 60 * 24 * 30) {
+    return rtf.format(-Math.round(diffSec / 86400), 'day');
+  }
+  if (Math.abs(diffSec) < 60 * 60 * 24 * 365) {
+    return rtf.format(-Math.round(diffSec / (86400 * 30)), 'month');
+  }
+  // Beyond a year, fall back to a short date so the user can still
+  // see roughly when the community was added.
+  return past.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
@@ -147,7 +180,7 @@ export default async function DashboardPage() {
                 </span>
                 <span className="flex items-center gap-1.5 text-xs text-text-secondary">
                   <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-                  Connected just now &middot; Learning
+                  Connected {formatConnectedAgo(community.createdAt)} &middot; Learning
                 </span>
               </div>
             </div>
