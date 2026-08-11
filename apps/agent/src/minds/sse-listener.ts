@@ -139,6 +139,28 @@ interface MindsSseEventPayload {
   };
 }
 
+// The Mind returns assistant text as a small HTML fragment
+// (`<p>…</p>`, occasionally `<ul><li>…</li></ul>` or `<br>`). The
+// dashboard and the in-app insight card render `content` as plain
+// text, so without this conversion the user would see literal
+// `<p>` / `</p>` characters in the UI. Block-level tags get
+// converted to paragraph breaks; inline formatting is stripped; the
+// final whitespace is normalized so the result fits cleanly in the
+// React `<p>` that wraps it.
+function htmlToText(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|li|h[1-6]|div)>/gi, '\n\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export async function handleMindsSseEvent(data: string): Promise<void> {
   let payload: MindsSseEventPayload;
   try {
@@ -152,7 +174,12 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
   // Prefer the top-level `messageText` (current Minds API shape); fall
   // back to the older nested `message.content` so this listener remains
   // compatible with any older build of the API.
-  const content = payload.messageText ?? message?.content;
+  const rawContent = payload.messageText ?? message?.content;
+  // The Mind emits HTML; the dashboard renders plain text. Convert
+  // before persisting so the DB stores clean text and any future
+  // renderer (dashboard, future surfaces) gets a value it can
+  // display directly.
+  const content = rawContent ? htmlToText(rawContent) : undefined;
 
   if (!alias || !content) {
     console.error('Minds SSE event missing alias or message content, skipping:', payload);
