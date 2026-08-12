@@ -57,6 +57,10 @@ export async function POST(): Promise<NextResponse> {
   }
 
   const now = Date.now();
+  // Insert the list insights first, then the hero LAST so its
+  // createdAt is the most recent — the dashboard's findFirst for
+  // the hero picks the most recent autonomous insight, so the
+  // hero must be the newest row.
   for (const d of DEMO_INSIGHTS) {
     const createdAt = new Date(now - d.minutesAgo * 60 * 1000);
     await prisma.insight.create({
@@ -68,6 +72,22 @@ export async function POST(): Promise<NextResponse> {
       },
     });
   }
+  // Hero: created right now (newest). Same shape as the agent's
+  // autonomous insights, but with a narrative subject instead of
+  // a check-in count. The dashboard picks this because it's
+  // the most recent autonomous row.
+  await prisma.insight.create({
+    data: {
+      communityId: community.id,
+      content:
+        'Different shape from the check-ins - first relationship update since TestMember1 Demo.\n\n' +
+        'The Mind has noticed a real signal: a returning member ' +
+        're-engaging after a period of inactivity, rather than the ' +
+        'usual steady-state count. Worth a personal reply.',
+      source: 'autonomous',
+      createdAt: new Date(now - 10 * 60 * 1000), // 10 minutes ago
+    },
+  });
 
   const final = await prisma.insight.findMany({
     where: { communityId: community.id },
