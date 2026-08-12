@@ -5,33 +5,32 @@ import {
   Users,
   Heart,
   Sparkles,
-  MessageSquare,
-  Brain,
-  Bell,
   ArrowRight,
-  CircleHelp,
 } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { prisma } from '@kindred/db';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { EmptyState } from '@/components/dashboard/EmptyState';
+import { CommunityStatusCard } from '@/components/dashboard/CommunityStatusCard';
+import { WhatKindredNoticed } from '@/components/dashboard/WhatKindredNoticed';
+import { InsightListItem } from '@/components/dashboard/InsightListItem';
 
-// Kindred Mind dashboard — the primary authenticated product surface.
+// Kindred Mind dashboard (2026 redesign) — the primary authenticated
+// product surface.
 //
-// Composition:
-//   - Greeting (time-of-day aware, uses the creator's username)
-//   - Connected community card (if any) or welcome card
-//   - Community Memory strip: members, relationships, meaningful moments
-//   - Recent Insights: empty state when no insights yet, otherwise list
-//   - Ask Kindred: empty state pointing the creator at the reactive
-//     intelligence surface (the /dashboard/ask route)
-//   - "What to expect": three concepts (Remember / Notice / Ask) that
-//     teach the dashboard by living in it — no separate tour page
+// Information hierarchy (per the redesign brief):
+//   1. Greeting ("Good afternoon, haybeewriting6 👋")
+//   2. Community status card (gradient purple, visually strong)
+//   3. "What Kindred noticed" — the HERO, surfaces the most recent
+//      insight as a personalized AI observation
+//   4. Community Memory — three compact stat cards (Members /
+//      Relationships / Moments), intentionally small because they
+//      support the hero rather than dominate the page
+//   5. Recent insights — list of AI-observation rows
 //
-// Server component: the auth check is real (not middleware-only), the
-// data is fetched per-request. The shell is a client component for
-// the mobile drawer, but the content rendered inside is plain HTML.
+// Server component: auth is real (not middleware-only), data is
+// fetched per-request from Prisma. No mock data anywhere — every
+// number on the page comes from a real query on real DB rows.
 
 function greetingFor(date: Date): string {
   const hour = date.getHours();
@@ -40,39 +39,6 @@ function greetingFor(date: Date): string {
   if (hour < 17) return 'Good afternoon';
   if (hour < 21) return 'Good evening';
   return 'Hello';
-}
-
-// Human-readable "X ago" for the community's "Connected …" line. Uses
-// the platform-native `Intl.RelativeTimeFormat` so no extra dependency
-// is required. Examples:
-//   "just now"   (< 45s)
-//   "5 minutes ago"
-//   "2 hours ago"
-//   "3 days ago"
-//   "2 months ago"
-//   "Jan 15"     (> 1 year)
-function formatConnectedAgo(past: Date): string {
-  const now = Date.now();
-  const diffMs = now - past.getTime();
-  const diffSec = Math.round(diffMs / 1000);
-
-  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-  if (Math.abs(diffSec) < 45) return 'just now';
-  if (Math.abs(diffSec) < 60 * 60) {
-    return rtf.format(-Math.round(diffSec / 60), 'minute');
-  }
-  if (Math.abs(diffSec) < 60 * 60 * 24) {
-    return rtf.format(-Math.round(diffSec / 3600), 'hour');
-  }
-  if (Math.abs(diffSec) < 60 * 60 * 24 * 30) {
-    return rtf.format(-Math.round(diffSec / 86400), 'day');
-  }
-  if (Math.abs(diffSec) < 60 * 60 * 24 * 365) {
-    return rtf.format(-Math.round(diffSec / (86400 * 30)), 'month');
-  }
-  // Beyond a year, fall back to a short date so the user can still
-  // see roughly when the community was added.
-  return past.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 export default async function DashboardPage() {
@@ -87,45 +53,59 @@ export default async function DashboardPage() {
 
   // Find the creator's most recently created community. The Kindred
   // model is "one community per creator for the hackathon" but the
-  // schema allows many — `findFirst` is the simplest correct read.
+  // schema allows many — findFirst is the simplest correct read.
   const community = await prisma.community.findFirst({
     where: { creatorId: userId },
     orderBy: { createdAt: 'desc' },
   });
 
-  // Pull the count of members for the Community Memory strip. We
-  // intentionally read only the counts we display; detailed member
-  // lists live on /dashboard/community.
+  // The four counts that drive the Community Memory strip. Each is a
+  // real count against the same community.id — the cards intentionally
+  // come AFTER the "What Kindred noticed" hero, so they're support,
+  // not the headline.
   const memberCount = community
     ? await prisma.member.count({ where: { communityId: community.id } })
     : 0;
 
-  // "Relationships learned" is the count of RelationshipEvent rows
-  // across this community's members. Each event represents a single
-  // relationship signal — quiet participation, return after absence,
-  // etc. — that Kindred's digest worker eventually batches to the
-  // Mind. Showing the count here communicates "memory is forming"
-  // without exposing the raw event log.
   const relationshipsLearned = community
     ? await prisma.relationshipEvent.count({
         where: { member: { communityId: community.id } },
       })
     : 0;
 
-  // "Meaningful moments" = surfaced insights. The Insight table is
-  // the public-facing subset of what the Mind has actually noticed.
   const meaningfulMoments = community
     ? await prisma.insight.count({ where: { communityId: community.id } })
     : 0;
 
-  // The most recent few insights for the dashboard's preview. Capped
-  // to 3 to keep the layout calm — more would push the rest of the
-  // page below the fold.
-  const recentInsights = community
-    ? await prisma.insight.findMany({
+  // For the hero we prefer an "autonomous" insight (the Mind talking
+  // on its own), but fall back to the most recent insight of any
+  // source so the hero is never empty when there is data.
+  const heroInsight = community
+    ? await prisma.insight.findFirst({
+        where: {
+          communityId: community.id,
+          source: 'autonomous',
+        },
+        orderBy: { createdAt: 'desc' },
+      }) ??
+      (await prisma.insight.findFirst({
         where: { communityId: community.id },
         orderBy: { createdAt: 'desc' },
-        take: 3,
+      }))
+    : null;
+
+  // The recent-insights list: 5 most recent (excluding the hero
+  // one, so we don't double-show it). Capped to 5 to keep the list
+  // calm — anything more would push the user toward the dedicated
+  // /dashboard/insights page.
+  const recentInsights = community
+    ? await prisma.insight.findMany({
+        where: {
+          communityId: community.id,
+          ...(heroInsight ? { id: { not: heroInsight.id } } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
       })
     : [];
 
@@ -135,12 +115,6 @@ export default async function DashboardPage() {
     <DashboardShell
       username={username}
       email={email}
-      // The "Connect another community" button now lives in the
-      // dashboard's top-right header (per the wireframe), not in
-      // the main content row next to the greeting. Pass it as a
-      // topRightAction so the shell renders it on desktop next to
-      // the brand mark, and not at all on mobile (where the
-      // hamburger drawer carries the nav).
       topRightAction={
         community
           ? {
@@ -150,61 +124,36 @@ export default async function DashboardPage() {
           : null
       }
     >
-      <div className="flex flex-col gap-8">
-        {/* ==================== HEADER ==================== */}
+      <div className="flex flex-col gap-7">
+        {/* ==================== 1. GREETING ==================== */}
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
-            {greeting}, {username ?? 'there'}
+            {greeting}, {username ?? 'there'} <span aria-hidden>👋</span>
           </h1>
           <p className="text-sm text-text-secondary sm:text-base">
             {community
-              ? 'Your community memory is beginning to take shape.'
+              ? "Here's what Kindred noticed."
               : 'Connect your first community to start building memory.'}
           </p>
         </header>
 
-        {/* ==================== CONNECTED COMMUNITY (or WELCOME) ==================== */}
+        {/* ==================== 2. COMMUNITY STATUS (or welcome) ==================== */}
         {community ? (
-          <section className="flex flex-col gap-3 rounded-card border border-border bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-input bg-purple-light p-2">
-                <img
-                  src="/brand/platforms/telegram.jpg"
-                  alt="Telegram logo"
-                  className="h-8 w-8 object-contain"
-                />
-              </div>
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-base font-semibold text-text-primary">
-                  {community.telegramChatTitle || 'My Telegram Community'}
-                </span>
-                <span className="flex items-center gap-1.5 text-xs text-text-secondary">
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-                  Connected {formatConnectedAgo(community.createdAt)} &middot; Learning
-                </span>
-              </div>
-            </div>
-            <Link
-              href="/dashboard/community"
-              className="text-sm font-medium text-brand-primary transition-colors hover:text-brand-primary-hover"
-            >
-              View community →
-            </Link>
-          </section>
+          <CommunityStatusCard community={community} />
         ) : (
-          <section className="flex flex-col items-start gap-4 rounded-card border border-border bg-white p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+          <section className="flex flex-col items-start gap-4 rounded-2xl border border-border bg-white p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
             <div className="flex flex-col gap-2">
               <h2 className="text-lg font-semibold text-text-primary">
                 Connect your first community
               </h2>
               <p className="max-w-md text-sm text-text-secondary">
-                Kindred learns the relationships inside your community over time.
-                Choose where your community lives to get started.
+                Kindred learns the relationships inside your community over
+                time. Choose where your community lives to get started.
               </p>
             </div>
             <Link
               href="/onboarding/group"
-              className="inline-flex items-center gap-1.5 rounded-input bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-hover"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-hover"
             >
               Get started
               <ArrowRight className="h-4 w-4" />
@@ -212,163 +161,75 @@ export default async function DashboardPage() {
           </section>
         )}
 
-        {/* ==================== COMMUNITY MEMORY ==================== */}
+        {/* ==================== 3. WHAT KINDRED NOTICED (hero) ====================
+            This is the visual centerpiece of the new dashboard — the
+            product's value proposition rendered as a real observation. */}
+        {community && (
+          <WhatKindredNoticed
+            insight={heroInsight}
+            communityTitle={community.telegramChatTitle}
+          />
+        )}
+
+        {/* ==================== 4. COMMUNITY MEMORY (supporting metrics) ==================== */}
         {community && (
           <section className="flex flex-col gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Community Memory
+              Community memory
             </h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-3">
               <StatCard
                 label="Members"
                 value={memberCount.toLocaleString()}
                 icon={<Users className="h-4 w-4" />}
-                helpText="What Kindred remembers"
+                iconBgClass="bg-purple-light"
+                iconColorClass="text-brand-primary"
+                helpText="People Kindred knows"
               />
               <StatCard
-                label="Relationships learned"
+                label="Relationships"
                 value={relationshipsLearned.toLocaleString()}
                 icon={<Heart className="h-4 w-4" />}
-                helpText="Quiet signals captured"
+                iconBgClass="bg-soft-pink"
+                iconColorClass="text-pink-500"
+                helpText="Signals discovered"
               />
               <StatCard
-                label="Meaningful moments"
+                label="Moments"
                 value={meaningfulMoments.toLocaleString()}
                 icon={<Sparkles className="h-4 w-4" />}
-                helpText="Surfaced to you"
+                iconBgClass="bg-soft-amber"
+                iconColorClass="text-amber-500"
+                helpText="Meaningful remembered"
               />
             </div>
           </section>
         )}
 
-        {/* ==================== RECENT INSIGHTS ==================== */}
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Recent Insights
-            </h2>
-            {community && recentInsights.length > 0 && (
+        {/* ==================== 5. RECENT INSIGHTS (list) ==================== */}
+        {community && recentInsights.length > 0 && (
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Recent insights
+              </h2>
               <Link
                 href="/dashboard/insights"
-                className="text-sm font-medium text-brand-primary transition-colors hover:text-brand-primary-hover"
+                className="text-xs font-medium text-brand-primary transition-colors hover:text-brand-primary-hover"
               >
-                View all →
+                View all
               </Link>
-            )}
-          </div>
-          {recentInsights.length > 0 ? (
-            <ul className="flex flex-col gap-3">
+            </div>
+            <ul className="flex flex-col gap-2">
               {recentInsights.map((insight) => (
-                <li
-                  key={insight.id}
-                  className="flex flex-col gap-1 rounded-card border border-border bg-white p-4 sm:p-5"
-                >
-                  <div className="flex items-center gap-2 text-xs text-text-secondary">
-                    <Brain className="h-3.5 w-3.5" />
-                    {insight.createdAt.toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                    {insight.memberId && (
-                      <span className="text-text-muted">· about a member</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-text-primary">{insight.content}</p>
+                <li key={insight.id}>
+                  <InsightListItem insight={insight} />
                 </li>
               ))}
             </ul>
-          ) : (
-            <EmptyState
-              icon={<Bell className="h-5 w-5" />}
-              title="Your Mind is listening"
-              description={
-                community
-                  ? 'Insights will appear here as your community talks.'
-                  : 'Connect a community to start surfacing insights.'
-              }
-            />
-          )}
-        </section>
-
-        {/* ==================== ASK KINDRED ==================== */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            Ask Kindred
-          </h2>
-          <EmptyState
-            icon={<MessageSquare className="h-5 w-5" />}
-            title="Ask anything about your community"
-            description={
-              <span>
-                Try{' '}
-                <span className="italic text-text-primary">
-                  &ldquo;Who has been consistently supporting the community
-                  recently?&rdquo;
-                </span>
-              </span>
-            }
-            cta={
-              <Link
-                href="/dashboard/ask"
-                className="inline-flex items-center gap-1.5 rounded-input bg-brand-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-hover"
-              >
-                Ask Kindred
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            }
-          />
-        </section>
-
-        {/* ==================== WHAT TO EXPECT ==================== */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            What to expect
-          </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <ExpectCard
-              title="Remember"
-              body="People, conversations, milestones."
-              icon={<Users className="h-4 w-4" />}
-            />
-            <ExpectCard
-              title="Notice"
-              body="Returning members and meaningful moments."
-              icon={<Sparkles className="h-4 w-4" />}
-            />
-            <ExpectCard
-              title="Ask"
-              body="Questions about your community over time."
-              icon={<CircleHelp className="h-4 w-4" />}
-            />
-          </div>
-        </section>
+          </section>
+        )}
       </div>
     </DashboardShell>
-  );
-}
-
-// Small "what to expect" card used in the bottom section of the
-// dashboard. Communicates the product's three core capabilities
-// (Remember / Notice / Ask) without using the visual language of
-// a feature list. Each card is intentionally small and quiet — the
-// purpose is reassurance, not promotion.
-function ExpectCard({
-  title,
-  body,
-  icon,
-}: {
-  title: string;
-  body: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2 rounded-card border border-border bg-white p-4">
-      <div className="flex h-8 w-8 items-center justify-center rounded-input bg-brand-primary/10 text-brand-primary">
-        {icon}
-      </div>
-      <span className="text-sm font-semibold text-text-primary">{title}</span>
-      <p className="text-xs text-text-secondary">{body}</p>
-    </div>
   );
 }

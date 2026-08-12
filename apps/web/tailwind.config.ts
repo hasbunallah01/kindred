@@ -18,15 +18,22 @@ const config: Config = {
       colors: {
         // Brand — values per the Kindred Mind Design Foundation
         // (docs/DESIGN_FOUNDATION.md) and the Onboarding & Dashboard
-        // wireframe. brand-primary is the brighter, more vibrant
-        // #6C5CE7 (was #5B3CC4 — too indigo/deep). purple-light is
-        // the soft wash used for active platform-card icon
-        // backgrounds, was previously just `bg-brand-primary/10`
-        // (uneven math).
-        'brand-primary': '#6C5CE7',
-        'brand-primary-hover': '#5A4BD1',
-        'brand-primary-active': '#4A3DBA',
+        // wireframe. brand-primary was #6C5CE7 — updated to the
+        // slightly deeper, more vibrant #7C3AED (vivid violet) for the
+        // 2026 dashboard refresh. purple-light is the soft wash
+        // used for active icon-container backgrounds. deep-purple is
+        // used for the community-status card gradient. soft-pink and
+        // soft-amber are the new light-tint surfaces for the metrics
+        // cards (Members = purple, Relationships = pink, Moments =
+        // amber) — kept low-saturation so the cards feel calm.
+        'brand-primary': '#7C3AED',
+        'brand-primary-hover': '#6D28D9',
+        'brand-primary-active': '#5B21B6',
+        'deep-purple': '#5B21B6',
         'purple-light': '#EDE9FE',
+        'soft-pink': '#FCE7F3',
+        'soft-amber': '#FEF3C7',
+        'soft-emerald': '#D1FAE5',
         coral: '#FF7A6B',
         'accent-gold': '#F6B73C',
 
@@ -55,9 +62,11 @@ const config: Config = {
       },
       borderRadius: {
         input: '14px',
-        card: '20px',
-        container: '24px',
+        card: '24px',
+        container: '32px',
         code: '8px',
+        '2xl': '1.25rem',
+        '3xl': '1.75rem',
       },
       boxShadow: {
         sm: '0 1px 2px rgba(0, 0, 0, 0.04)',

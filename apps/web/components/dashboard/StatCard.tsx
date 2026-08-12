@@ -1,36 +1,48 @@
 import type { ReactNode } from 'react';
 
-// Tiny stat card used in the dashboard's Community Memory strip.
-// Shows a single number with a label, plus an optional icon. Designed
-// to communicate "memory is taking shape" without becoming a
-// metrics-heavy analytics panel. The value can be a string (e.g. "—")
-// when the backend doesn't have data yet, rather than a misleading
-// fake number.
+// Compact metric card used in the dashboard's Community Memory
+// strip. Per the redesign, these are intentionally SMALLER and
+// more visual than the previous version — they support the
+// "What Kindred noticed" hero rather than dominate the page.
+// Each card carries a small icon inside a soft tint container
+// (purple for members, pink for relationships, amber for moments)
+// and a single number. No giant typography, no border bloat.
 
 export interface StatCardProps {
   label: string;
   value: string | number;
   icon?: ReactNode;
+  iconBgClass?: string;
+  iconColorClass?: string;
   helpText?: string;
 }
 
-export function StatCard({ label, value, icon, helpText }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  icon,
+  iconBgClass = 'bg-purple-light',
+  iconColorClass = 'text-brand-primary',
+  helpText,
+}: StatCardProps) {
   return (
-    <div className="flex items-start gap-3 rounded-card border border-border bg-white p-4">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border bg-white p-4 sm:p-5">
       {icon && (
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input bg-brand-primary/10 text-brand-primary">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBgClass} ${iconColorClass}`}
+        >
           {icon}
         </div>
       )}
-      <div className="flex flex-col">
-        <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
-          {label}
-        </span>
-        <span className="mt-0.5 text-2xl font-bold tracking-tight text-text-primary">
+      <div>
+        <p className="text-2xl font-bold leading-none tracking-tight text-text-primary sm:text-3xl">
           {value}
-        </span>
+        </p>
+        <p className="mt-1.5 text-sm font-medium text-text-secondary">
+          {label}
+        </p>
         {helpText && (
-          <span className="mt-0.5 text-xs text-text-muted">{helpText}</span>
+          <p className="mt-0.5 text-xs text-text-muted">{helpText}</p>
         )}
       </div>
     </div>
