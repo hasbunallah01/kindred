@@ -12,7 +12,10 @@ import type { Config } from 'tailwindcss';
 // (docs/DESIGN_FOUNDATION.md) values. Do not change them without
 // updating the Foundation document.
 const config: Config = {
-  content: ['./app/**/*.{ts,tsx}'],
+  content: [
+    './app/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+  ],
   theme: {
     extend: {
       colors: {
