@@ -260,17 +260,20 @@ export function DashboardShell({
       )}
 
       {/* ==================== MOBILE TOP HEADER (light) ====================
-          The brand mark is a single wide PNG (441x119, 3.71:1) that
-          contains the K-mark + 'KINDRED®' + tagline all in one
-          asset. We stretch the image to fit the available space
-          and remove our own text overlays — the image IS the
-          brand mark. h-12 (48px) keeps the header compact. */}
-      <header className="sticky top-0 z-40 flex h-12 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:hidden">
+          The brand mark is a single wide PNG (441x119, 3.71:1)
+          that contains the K-mark + 'KINDRED®' + tagline all in
+          one asset. We render it at h-9 (36px) and let the width
+          follow the natural aspect ratio — `flex-1` on the Link
+          gives the image as much horizontal room as it needs
+          before the bell/avatar. No text overlays: the image IS
+          the brand mark, and adding KINDRED text next to it would
+          double-render the brand and break the reference. */}
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:hidden">
         <Link href="/dashboard" className="flex min-w-0 flex-1 items-center" aria-label="Kindred Mind">
           <img
             src="/brand/kindred-logo.png"
-            alt="Kindred Mind"
-            className="h-7 w-auto max-w-full"
+            alt="Kindred Mind — never let a loyal fan become a forgotten fan."
+            className="h-9 w-auto max-w-full"
           />
         </Link>
         <div className="flex shrink-0 items-center gap-2">
