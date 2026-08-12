@@ -184,23 +184,16 @@ export function DashboardShell({
     <div className="min-h-screen bg-surface text-text-primary">
       {/* ==================== DESKTOP SIDEBAR (dark purple) ==================== */}
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-gradient-to-b from-deep-purple via-deep-purple to-brand-primary px-4 py-6 sm:flex">
-        {/* Brand mark: logo + KINDRED wordmark (white) + tagline
-            (lighter white). On the dark sidebar the wordmark
-            drops the brand-purple to white so it stays legible. */}
-        <Link href="/dashboard" className="mb-8 flex items-start gap-2.5">
+        {/* Brand mark: a single wide PNG (441x119, 3.71:1) that
+            contains the K-mark + 'KINDRED®' + tagline. Stretched
+            to fit the sidebar's 240px content width. No CSS text
+            overlay — the image IS the brand mark. */}
+        <Link href="/dashboard" className="mb-8 block">
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-9 w-9 shrink-0"
+            className="h-9 w-full object-contain"
           />
-          <div className="min-w-0 pt-0.5">
-            <p className="text-base font-bold uppercase tracking-wider text-white">
-              Kindred<sup className="text-[0.5em]">®</sup>
-            </p>
-            <p className="mt-0.5 text-[10px] leading-tight text-white/70">
-              Never let a loyal fan become a forgotten fan.
-            </p>
-          </div>
         </Link>
         <nav className="flex flex-col gap-1">
           {NAV_ITEMS.map((item) => renderNavLink(item, 'sidebar'))}
@@ -267,28 +260,18 @@ export function DashboardShell({
       )}
 
       {/* ==================== MOBILE TOP HEADER (light) ====================
-          Mobile brand mark matches the 2026 reference: logo +
-          KINDRED® wordmark + tagline. The tagline wraps to two
-          lines on phone widths, so the header is taller than a
-          minimum — but the reference explicitly shows the full
-          brand mark here, so we follow it. The dashboard content
-          still has room because the bottom nav is `fixed` and
-          `main` has `pb-32`. */}
-      <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:hidden">
-        <Link href="/dashboard" className="flex min-w-0 items-start gap-2" aria-label="Kindred Mind">
+          The brand mark is a single wide PNG (441x119, 3.71:1) that
+          contains the K-mark + 'KINDRED®' + tagline all in one
+          asset. We stretch the image to fit the available space
+          and remove our own text overlays — the image IS the
+          brand mark. h-12 (48px) keeps the header compact. */}
+      <header className="sticky top-0 z-40 flex h-12 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:hidden">
+        <Link href="/dashboard" className="flex min-w-0 flex-1 items-center" aria-label="Kindred Mind">
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-9 w-9 shrink-0"
+            className="h-7 w-auto max-w-full"
           />
-          <div className="min-w-0 pt-0.5">
-            <p className="text-sm font-bold uppercase tracking-wider text-brand-primary">
-              Kindred<sup className="text-[0.5em]">®</sup>
-            </p>
-            <p className="mt-0.5 text-[9px] leading-tight text-text-muted">
-              Never let a loyal fan become a forgotten fan.
-            </p>
-          </div>
         </Link>
         <div className="flex shrink-0 items-center gap-2">
           <button
