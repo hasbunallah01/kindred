@@ -37,23 +37,20 @@ export async function POST(): Promise<NextResponse> {
 
   // Delete any existing demo insights (the seed content prefixes
   // are the IDs we use for clean re-seeding).
-  const existing = await prisma.insight.findMany({
-    where: {
-      communityId: community.id,
-      content: { startsWith: 'Engagement in the group' },
-    },
-  });
-  for (const e of existing) {
-    await prisma.insight.delete({ where: { id: e.id } });
-  }
-  const existing2 = await prisma.insight.findMany({
-    where: {
-      communityId: community.id,
-      content: { startsWith: '3 members haven' },
-    },
-  });
-  for (const e of existing2) {
-    await prisma.insight.delete({ where: { id: e.id } });
+  for (const prefix of [
+    'Engagement in the group',
+    '3 members haven',
+    'Different shape from the check-ins',
+  ]) {
+    const existing = await prisma.insight.findMany({
+      where: {
+        communityId: community.id,
+        content: { startsWith: prefix },
+      },
+    });
+    for (const e of existing) {
+      await prisma.insight.delete({ where: { id: e.id } });
+    }
   }
 
   const now = Date.now();
