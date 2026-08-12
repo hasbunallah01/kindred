@@ -267,23 +267,30 @@ export function DashboardShell({
       )}
 
       {/* ==================== MOBILE TOP HEADER (light) ====================
-          On mobile the brand mark collapses to just the logo +
-          the KINDRED wordmark (no tagline) — the tagline is a
-          desktop-only affordance where there's horizontal room.
-          This keeps the header at ~48px so the dashboard content
-          has room to breathe on phone screens. */}
-      <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur sm:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2" aria-label="Kindred Mind">
+          Mobile brand mark matches the 2026 reference: logo +
+          KINDRED® wordmark + tagline. The tagline wraps to two
+          lines on phone widths, so the header is taller than a
+          minimum — but the reference explicitly shows the full
+          brand mark here, so we follow it. The dashboard content
+          still has room because the bottom nav is `fixed` and
+          `main` has `pb-32`. */}
+      <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:hidden">
+        <Link href="/dashboard" className="flex min-w-0 items-start gap-2" aria-label="Kindred Mind">
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-7 w-7 shrink-0"
+            className="h-9 w-9 shrink-0"
           />
-          <span className="text-sm font-bold uppercase tracking-wider text-brand-primary">
-            Kindred<sup className="text-[0.5em]">®</sup>
-          </span>
+          <div className="min-w-0 pt-0.5">
+            <p className="text-sm font-bold uppercase tracking-wider text-brand-primary">
+              Kindred<sup className="text-[0.5em]">®</sup>
+            </p>
+            <p className="mt-0.5 text-[9px] leading-tight text-text-muted">
+              Never let a loyal fan become a forgotten fan.
+            </p>
+          </div>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             aria-label="Notifications"
