@@ -52,7 +52,11 @@ export function CommunityStatusCard({ community }: CommunityStatusCardProps) {
       <div className="pointer-events-none absolute -bottom-10 right-10 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
 
       <div className="relative flex items-center gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
+        {/* Circular icon container, per the 2026 reference. Holds
+            the community mark (people-group icon) on a soft
+            white-translucent disk so it stays legible against the
+            gradient. */}
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
           <Users className="h-6 w-6 text-white" />
         </div>
         <div className="min-w-0 flex-1">

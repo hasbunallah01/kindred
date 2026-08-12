@@ -1,11 +1,18 @@
 import Link from 'next/link';
-import { Sparkles, ChevronRight, Heart } from 'lucide-react';
+import { Sparkles, Heart } from 'lucide-react';
 
 // The "What Kindred noticed" hero — the centerpiece of the new
 // dashboard hierarchy. Surfaces the most recent autonomous insight
 // (or any insight, if there is no autonomous one yet) as a
 // personalized observation, with the human-readable subject and
 // timestamp the Mind would speak in.
+//
+// Per the 2026 reference: the entire card sits on a soft purple
+// (#EDE9FE) background so it reads as the dashboard's "AI
+// observation" surface — visually distinct from the white insight
+// list below. The K avatar (Kindred's mark) sits inside the card
+// on a darker purple circle, anchoring the body text to the
+// brand.
 //
 // Reads a single `insight` from the existing Prisma query. If no
 // insight exists yet, renders an empty state that points the user
@@ -35,9 +42,6 @@ function formatRelativeShort(date: Date): string {
 // a more "headline + summary" feel. Falls back to the full text if
 // no suitable break is found.
 function pickHeadline(content: string): { headline: string; body: string } {
-  // The first sentence (split on . ! ? followed by whitespace or EOL)
-  // is the headline; the rest is the body. Long insights keep the
-  // full text on the card rather than truncating — the card scrolls.
   const trimmed = content.trim();
   const sentenceMatch = trimmed.match(/^([^.!?\n]+[.!?])(?:\s+|$)([\s\S]*)$/);
   if (sentenceMatch) {
@@ -46,8 +50,6 @@ function pickHeadline(content: string): { headline: string; body: string } {
       return { headline: firstSentence, body: (rest ?? '').trim() };
     }
   }
-  // If first sentence is too long, find the first newline and use
-  // everything up to it as the headline.
   const newlineIdx = trimmed.indexOf('\n');
   if (newlineIdx > 0 && newlineIdx <= 200) {
     return {
@@ -58,7 +60,7 @@ function pickHeadline(content: string): { headline: string; body: string } {
   return { headline: trimmed, body: '' };
 }
 
-export function WhatKindredNoticed({ insight, communityTitle }: WhatKindredNoticedProps) {
+export function WhatKindredNoticed({ insight }: WhatKindredNoticedProps) {
   if (!insight) {
     return (
       <section className="flex flex-col gap-3">
@@ -79,7 +81,6 @@ export function WhatKindredNoticed({ insight, communityTitle }: WhatKindredNotic
   }
 
   const { headline, body } = pickHeadline(insight.content);
-  const isAutonomous = insight.source === 'autonomous';
 
   return (
     <section className="flex flex-col gap-3">
@@ -95,18 +96,20 @@ export function WhatKindredNoticed({ insight, communityTitle }: WhatKindredNotic
           View all
         </Link>
       </div>
-      <article className="rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
+
+      {/* The hero card. Soft purple background so the whole block
+          reads as "AI observation surface" — distinct from the
+          white insight list below. Subtle border for definition;
+          rounded-2xl matches the rest of the dashboard. */}
+      <article className="rounded-2xl border border-purple-200 bg-purple-light p-4 sm:p-5">
         <div className="flex items-start gap-3">
+          {/* K avatar — solid purple circle, the brand mark
+              anchoring the card. Sits next to the body text. */}
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-primary to-deep-purple text-sm font-semibold text-white">
-            {isAutonomous ? 'K' : 'A'}
+            K
           </div>
           <div className="min-w-0 flex-1">
-            {communityTitle && (
-              <p className="text-xs font-medium text-text-secondary">
-                About <span className="text-text-primary">{communityTitle}</span>
-              </p>
-            )}
-            <p className="mt-1 text-base font-semibold leading-snug text-text-primary">
+            <p className="text-base font-semibold leading-snug text-text-primary">
               {headline}
             </p>
             {body && (
@@ -118,23 +121,15 @@ export function WhatKindredNoticed({ insight, communityTitle }: WhatKindredNotic
               <p className="text-xs text-text-muted">
                 {formatRelativeShort(insight.createdAt)}
               </p>
-              <button
-                type="button"
-                aria-label="Save this insight"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-soft-pink hover:text-pink-500"
+              <span
+                aria-hidden
+                className="flex h-7 w-7 items-center justify-center rounded-full text-text-muted transition-colors"
               >
                 <Heart className="h-4 w-4" />
-              </button>
+              </span>
             </div>
           </div>
         </div>
-        <Link
-          href="/dashboard/insights"
-          className="mt-4 flex items-center justify-center gap-1 rounded-xl border border-border bg-surface px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-white hover:text-text-primary"
-        >
-          See all insights
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Link>
       </article>
     </section>
   );

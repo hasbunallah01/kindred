@@ -158,12 +158,23 @@ export function DashboardShell({
     <div className="min-h-screen bg-surface text-text-primary">
       {/* ==================== DESKTOP SIDEBAR ==================== */}
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border bg-background px-4 py-6 sm:flex">
-        <Link href="/dashboard" className="mb-8 inline-flex items-center">
+        {/* Brand mark: logo + KINDRED wordmark + tagline, per the
+            2026 reference. The stack lives only at the very top
+            of the sidebar so the nav below has room to breathe. */}
+        <Link href="/dashboard" className="mb-8 flex items-start gap-2.5">
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-9 w-auto"
+            className="h-9 w-9 shrink-0"
           />
+          <div className="min-w-0 pt-0.5">
+            <p className="text-base font-bold uppercase tracking-wider text-brand-primary">
+              Kindred<sup className="text-[0.5em]">®</sup>
+            </p>
+            <p className="mt-0.5 text-[10px] leading-tight text-text-muted">
+              Never let a loyal fan become a forgotten fan.
+            </p>
+          </div>
         </Link>
         <nav className="flex flex-col gap-1">
           {NAV_ITEMS.map(renderNavLink)}
@@ -213,12 +224,20 @@ export function DashboardShell({
 
       {/* ==================== MOBILE TOP HEADER ==================== */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:hidden">
-        <Link href="/dashboard" className="inline-flex items-center">
+        <Link href="/dashboard" className="flex items-start gap-2">
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-8 w-auto"
+            className="h-9 w-9 shrink-0"
           />
+          <div className="min-w-0 pt-0.5">
+            <p className="text-sm font-bold uppercase tracking-wider text-brand-primary">
+              Kindred<sup className="text-[0.5em]">®</sup>
+            </p>
+            <p className="mt-0.5 text-[9px] leading-tight text-text-muted">
+              Never let a loyal fan become a forgotten fan.
+            </p>
+          </div>
         </Link>
         <div className="flex items-center gap-2">
           <button
