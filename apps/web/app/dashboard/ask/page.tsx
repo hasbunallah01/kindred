@@ -5,19 +5,16 @@ import { ArrowLeft, MessageSquare } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { prisma } from '@kindred/db';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
-import { AskKindredModal } from '@/components/modals/AskKindredModal';
+import { AskKindredLauncher } from './AskKindredLauncher';
 
-// /dashboard/ask — opens the AskKindredModal (a centered overlay)
-// for the user's most recent community. The modal posts to
-// /api/insights/ask, which calls sendMessage() on the community's
-// Mind conversation and polls getMessageHistory() for the reply.
-// The reply becomes a new Insight row with source='reactive'.
-//
-// Server component: looks up the user's community and passes its id
-// to the (client) modal. The modal renders the dialog itself.
-// We do NOT make this a separate /dashboard/ask page form — the
-// modal is the UX, and routing to /dashboard/ask just makes the
-// nav link resolve to something with content.
+// /dashboard/ask — opens the Ask Kindred modal (a centered overlay)
+// for the user's most recent community. The launcher is a client
+// component that owns the open/close state. The page itself is a
+// server component so it can read the community directly from
+// Prisma. POSTs to /api/insights/ask, which calls sendMessage() on
+// the community's Mind conversation and polls getMessageHistory()
+// for the reply. The reply becomes a new Insight row with
+// source='reactive'.
 
 export default async function AskPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -85,13 +82,9 @@ export default async function AskPage() {
               </div>
             </div>
             <div className="mt-6">
-              {/* The modal renders a centered dialog that posts to
-                  /api/insights/ask. Calling onClose is a no-op here
-                  because the modal has no parent router to navigate
-                  back to — the user can dismiss it with the X. */}
-              <AskKindredModal
+              <AskKindredLauncher
                 communityId={community.id}
-                onClose={() => {}}
+                communityTitle={community.telegramChatTitle || 'your community'}
               />
             </div>
           </section>
