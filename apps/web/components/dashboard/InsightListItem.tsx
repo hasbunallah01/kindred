@@ -87,17 +87,16 @@ export function InsightListItem({ insight, href = '/dashboard/insights' }: Insig
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1 self-center">
-        <button
-          type="button"
-          aria-label="Save"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-text-muted opacity-0 transition-opacity hover:bg-soft-pink hover:text-pink-500 group-hover:opacity-100"
+        {/* Heart save affordance is a visual placeholder for the demo;
+            saving an insight will be wired to a real API in a follow-up.
+            Marked as a non-interactive span so the row (which is the
+            Link) remains the only interactive element. */}
+        <span
+          aria-hidden
+          className="flex h-8 w-8 items-center justify-center rounded-full text-text-muted opacity-0 transition-opacity group-hover:opacity-100"
         >
           <Heart className="h-4 w-4" />
-        </button>
+        </span>
         <ChevronRight className="h-4 w-4 text-text-muted transition-transform group-hover:translate-x-0.5" />
       </div>
     </Link>
