@@ -16,26 +16,24 @@ import {
 import { authClient } from '@/lib/auth-client';
 
 // Shared shell for every authenticated /dashboard/* page (the
-// 2026 redesign). Two presentations share the same component,
-// keyed off the same nav items so the mobile and desktop feel like
-// the same product rather than two unrelated layouts:
+// 2026 redesign).
 //
-//   - Desktop/tablet (sm+): a 240px fixed left sidebar with the
-//     brand mark, the 4 primary nav items at the top, and
-//     Settings + profile/sign-out at the bottom (separated by a
-//     large flexible gap, so Settings feels like a secondary
-//     surface, not a peer of the primary nav).
+// Per the 2026 reference image, the desktop sidebar is a DARK
+// PURPLE surface with a WHITE PILL for the active nav item — the
+// inverse of the mobile bottom nav (white surface, purple pill).
+// The two presentations share the same nav items, the same
+// active-detection logic, and the same profile menu; only the
+// chrome (background, text colors, pill treatment) is different.
 //
-//   - Mobile (<sm): a compact top header (logo + bell + avatar)
-//     AND a fixed bottom nav with the 4 primary items. Settings
-//     is reached only through the profile menu. This replaces
-//     the previous drawer-style mobile nav, which felt admin-y.
+//   Desktop/tablet (sm+): 240px fixed left sidebar, dark purple
+//                          bg, white text, white pill for the
+//                          active item. Settings rendered as a
+//                          small icon row above the profile
+//                          (matches the reference).
 //
-// Per the design principle "purple is an accent, not the entire
-// UI": active state is a soft purple-light background + a stronger
-// label color. The community-status gradient is the one place
-// that earns the saturated purple — every other surface is white
-// or off-white with subtle borders and shadows.
+//   Mobile (<sm): compact top header (brand mark + bell + avatar)
+//                 AND a fixed bottom nav with the 4 primary items.
+//                 Settings is reached only through the profile menu.
 
 export interface DashboardShellProps {
   username: string | null;
@@ -99,32 +97,60 @@ export function DashboardShell({
   };
 
   // A single nav link element, rendered in both sidebar and bottom
-  // nav so the active treatment stays in sync.
-  const renderNavLink = (item: NavItem) => {
+  // nav. The class is composed from a `variant` so the same code
+  // path produces the white-pill-on-dark treatment (sidebar) and
+  // the purple-pill-on-white treatment (mobile bottom nav).
+  type NavVariant = 'sidebar' | 'mobile';
+  const renderNavLink = (item: NavItem, variant: NavVariant) => {
     const active = isActive(item.href);
     const Icon = item.icon;
+
+    if (variant === 'sidebar') {
+      // Dark purple sidebar:
+      //   active  = white pill, dark icon, dark text
+      //   other   = transparent bg, white-ish icon, white-ish text
+      return (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+            active
+              ? 'bg-white text-deep-purple shadow-sm'
+              : 'text-white/80 hover:bg-white/10 hover:text-white'
+          }`}
+        >
+          <Icon
+            className={`h-4 w-4 shrink-0 ${active ? 'text-deep-purple' : 'text-white/70'}`}
+          />
+          <span className="truncate">{item.label}</span>
+        </Link>
+      );
+    }
+
+    // Mobile bottom nav:
+    //   active  = purple-light pill, brand-purple icon + text
+    //   other   = transparent, gray icon + secondary text
     return (
-      <Link
-        key={item.href}
-        href={item.href}
-        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-          active
-            ? 'bg-purple-light text-brand-primary'
-            : 'text-text-secondary hover:bg-surface hover:text-text-primary'
-        }`}
-      >
-        <Icon
-          className={`h-4 w-4 shrink-0 ${active ? 'text-brand-primary' : 'text-text-muted'}`}
-        />
-        <span className="truncate">{item.label}</span>
-      </Link>
+      <li key={item.href} className="flex-1">
+        <Link
+          href={item.href}
+          className={`flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] font-medium transition-colors ${
+            active
+              ? 'bg-purple-light text-brand-primary'
+              : 'text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          <Icon
+            className={`h-5 w-5 ${active ? 'text-brand-primary' : 'text-text-muted'}`}
+          />
+          <span className="truncate">{item.label}</span>
+        </Link>
+      </li>
     );
   };
 
   // Profile avatar circle used in the sidebar (bottom) and the
-  // mobile top header (right side). The mobile top header has a
-  // click-to-open dropdown identical in shape to the sidebar's
-  // profile section.
+  // mobile top header (right side).
   const initial = (username ?? email ?? '?').charAt(0).toUpperCase();
   const ProfileAvatar = (
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-primary to-deep-purple text-sm font-semibold text-white">
@@ -156,11 +182,11 @@ export function DashboardShell({
 
   return (
     <div className="min-h-screen bg-surface text-text-primary">
-      {/* ==================== DESKTOP SIDEBAR ==================== */}
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border bg-background px-4 py-6 sm:flex">
-        {/* Brand mark: logo + KINDRED wordmark + tagline, per the
-            2026 reference. The stack lives only at the very top
-            of the sidebar so the nav below has room to breathe. */}
+      {/* ==================== DESKTOP SIDEBAR (dark purple) ==================== */}
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-gradient-to-b from-deep-purple via-deep-purple to-brand-primary px-4 py-6 sm:flex">
+        {/* Brand mark: logo + KINDRED wordmark (white) + tagline
+            (lighter white). On the dark sidebar the wordmark
+            drops the brand-purple to white so it stays legible. */}
         <Link href="/dashboard" className="mb-8 flex items-start gap-2.5">
           <img
             src="/brand/kindred-logo.png"
@@ -168,35 +194,53 @@ export function DashboardShell({
             className="h-9 w-9 shrink-0"
           />
           <div className="min-w-0 pt-0.5">
-            <p className="text-base font-bold uppercase tracking-wider text-brand-primary">
+            <p className="text-base font-bold uppercase tracking-wider text-white">
               Kindred<sup className="text-[0.5em]">®</sup>
             </p>
-            <p className="mt-0.5 text-[10px] leading-tight text-text-muted">
+            <p className="mt-0.5 text-[10px] leading-tight text-white/70">
               Never let a loyal fan become a forgotten fan.
             </p>
           </div>
         </Link>
         <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map(renderNavLink)}
+          {NAV_ITEMS.map((item) => renderNavLink(item, 'sidebar'))}
         </nav>
         {/* Flexible space — pushes Settings + account to the bottom
             of the sidebar, separated by a clear gap. */}
         <div className="mt-auto flex flex-col gap-3 pt-6">
-          {renderNavLink(SETTINGS_ITEM)}
+          {/* Settings as a small icon-only row, per the reference
+              (the 4 nav items above carry the full labels; Settings
+              is a secondary affordance). */}
+          <Link
+            href={SETTINGS_ITEM.href}
+            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+              isActive(SETTINGS_ITEM.href)
+                ? 'bg-white text-deep-purple shadow-sm'
+                : 'text-white/80 hover:bg-white/10 hover:text-white'
+            }`}
+            aria-label="Settings"
+          >
+            <Settings
+              className={`h-4 w-4 shrink-0 ${
+                isActive(SETTINGS_ITEM.href) ? 'text-deep-purple' : 'text-white/70'
+              }`}
+            />
+            <span className="truncate">{SETTINGS_ITEM.label}</span>
+          </Link>
           <div className="relative">
             <button
               type="button"
               onClick={() => setProfileOpen((open) => !open)}
               aria-haspopup="menu"
               aria-expanded={profileOpen}
-              className="flex w-full items-center gap-3 rounded-xl border border-border bg-white px-3 py-2.5 text-left transition-colors hover:bg-surface"
+              className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-white/10"
             >
               {ProfileAvatar}
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">
                 {username ?? 'You'}
               </span>
               <ChevronDown
-                className={`h-4 w-4 shrink-0 text-text-muted transition-transform ${
+                className={`h-4 w-4 shrink-0 text-white/70 transition-transform ${
                   profileOpen ? 'rotate-180' : ''
                 }`}
               />
@@ -222,7 +266,7 @@ export function DashboardShell({
         </div>
       )}
 
-      {/* ==================== MOBILE TOP HEADER ==================== */}
+      {/* ==================== MOBILE TOP HEADER (light) ==================== */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:hidden">
         <Link href="/dashboard" className="flex items-start gap-2">
           <img
@@ -264,33 +308,13 @@ export function DashboardShell({
         </div>
       </header>
 
-      {/* ==================== MOBILE FIXED BOTTOM NAV ==================== */}
+      {/* ==================== MOBILE FIXED BOTTOM NAV (light) ==================== */}
       <nav
         aria-label="Primary"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:hidden"
       >
         <ul className="flex items-stretch justify-between">
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(item.href);
-            const Icon = item.icon;
-            return (
-              <li key={item.href} className="flex-1">
-                <Link
-                  href={item.href}
-                  className={`flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] font-medium transition-colors ${
-                    active
-                      ? 'bg-purple-light text-brand-primary'
-                      : 'text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  <Icon
-                    className={`h-5 w-5 ${active ? 'text-brand-primary' : 'text-text-muted'}`}
-                  />
-                  <span className="truncate">{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
+          {NAV_ITEMS.map((item) => renderNavLink(item, 'mobile'))}
         </ul>
       </nav>
 
