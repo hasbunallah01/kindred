@@ -100,32 +100,36 @@ export function WhatKindredNoticed({ insight }: WhatKindredNoticedProps) {
       {/* The hero card. Soft purple background so the whole block
           reads as "AI observation surface" — distinct from the
           white insight list below. Subtle border for definition;
-          rounded-2xl matches the rest of the dashboard. */}
-      <article className="rounded-2xl border border-purple-200 bg-purple-light p-4 sm:p-5">
-        <div className="flex items-start gap-3">
+          rounded-2xl matches the rest of the dashboard.
+          Sized to be visually prominent without dominating the
+          page on phone screens — the reference image shows the
+          card fitting in roughly a third of the visible
+          viewport on a 360px-wide phone. */}
+      <article className="rounded-2xl border border-purple-200 bg-purple-light p-3.5 sm:p-4">
+        <div className="flex items-start gap-2.5">
           {/* K avatar — solid purple circle, the brand mark
               anchoring the card. Sits next to the body text. */}
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-primary to-deep-purple text-sm font-semibold text-white">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-primary to-deep-purple text-xs font-semibold text-white">
             K
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-base font-semibold leading-snug text-text-primary">
+            <p className="text-sm font-semibold leading-snug text-text-primary">
               {headline}
             </p>
             {body && (
-              <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
+              <p className="mt-1 text-xs leading-relaxed text-text-secondary line-clamp-3">
                 {body}
               </p>
             )}
-            <div className="mt-3 flex items-center justify-between">
-              <p className="text-xs text-text-muted">
+            <div className="mt-2 flex items-center justify-between">
+              <p className="text-[11px] text-text-muted">
                 {formatRelativeShort(insight.createdAt)}
               </p>
               <span
                 aria-hidden
-                className="flex h-7 w-7 items-center justify-center rounded-full text-text-muted transition-colors"
+                className="flex h-6 w-6 items-center justify-center rounded-full text-text-muted transition-colors"
               >
-                <Heart className="h-4 w-4" />
+                <Heart className="h-3.5 w-3.5" />
               </span>
             </div>
           </div>

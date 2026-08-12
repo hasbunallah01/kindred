@@ -186,6 +186,22 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
     return;
   }
 
+  // Filter out the Mind's autonomous "check-in" boilerplate. The
+  // Mind's autonomous timer emits a steady-state message every X
+  // minutes ("Nth check-in. Count holds at 1. State is
+  // unchanged..."). These are accurate but not useful as a
+  // dashboard hero — they replace the curated insight with a
+  // verbose zero-signal update.
+  //
+  // Pattern: starts with "<Nth>-<ordinal> check-in." — the Mind's
+  // canonical check-in format. Any insight matching this pattern
+  // is dropped at the SSE boundary (not persisted) and logged
+  // once so the operator can see it's being filtered.
+  if (isCheckInBoilerplate(content)) {
+    console.log(`Dropped Mind check-in boilerplate (${content.length} chars): "${content.slice(0, 60)}..."`);
+    return;
+  }
+
   const community = await prisma.community.findFirst({
     where: { mindsConversationId: alias },
   });
@@ -204,6 +220,20 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
   });
 
   console.log(`Created autonomous Insight for community ${community.id}.`);
+}
+
+// Detects the Mind's autonomous "Nth check-in" pattern. Kept as a
+// named function so the filter is easy to unit-test and easy to
+// reason about — adding more filter conditions here (other
+// zero-signal patterns the Mind tends to send) is a one-line
+// change.
+function isCheckInBoilerplate(content: string): boolean {
+  const trimmed = content.trim();
+  // "<Number/Ordinal> check-in." — covers "First", "Second", "Third",
+  // "Fourth", "Fifth", "Thirty-ninth", "Forty-second", etc.
+  return /^(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(?:st|nd|rd|th))[-\s]?check[-\s]?in\.?/i.test(
+    trimmed,
+  );
 }
 
 // Convenience wrapper for apps/agent/src/index.ts — starts the listener

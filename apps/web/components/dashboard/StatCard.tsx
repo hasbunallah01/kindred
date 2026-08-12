@@ -26,23 +26,23 @@ export function StatCard({
   helpText,
 }: StatCardProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border bg-white p-4 sm:p-5">
+    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-white p-3 sm:p-3.5">
       {icon && (
         <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBgClass} ${iconColorClass}`}
+          className={`flex h-8 w-8 items-center justify-center rounded-xl ${iconBgClass} ${iconColorClass}`}
         >
           {icon}
         </div>
       )}
       <div>
-        <p className="text-2xl font-bold leading-none tracking-tight text-text-primary sm:text-3xl">
+        <p className="text-xl font-bold leading-none tracking-tight text-text-primary sm:text-2xl">
           {value}
         </p>
-        <p className="mt-1.5 text-sm font-medium text-text-secondary">
+        <p className="mt-1 text-xs font-medium text-text-secondary">
           {label}
         </p>
         {helpText && (
-          <p className="mt-0.5 text-xs text-text-muted">{helpText}</p>
+          <p className="mt-0.5 text-[10px] text-text-muted">{helpText}</p>
         )}
       </div>
     </div>
