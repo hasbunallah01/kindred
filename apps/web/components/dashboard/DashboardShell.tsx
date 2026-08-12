@@ -266,22 +266,22 @@ export function DashboardShell({
         </div>
       )}
 
-      {/* ==================== MOBILE TOP HEADER (light) ==================== */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:hidden">
-        <Link href="/dashboard" className="flex items-start gap-2">
+      {/* ==================== MOBILE TOP HEADER (light) ====================
+          On mobile the brand mark collapses to just the logo +
+          the KINDRED wordmark (no tagline) — the tagline is a
+          desktop-only affordance where there's horizontal room.
+          This keeps the header at ~48px so the dashboard content
+          has room to breathe on phone screens. */}
+      <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur sm:hidden">
+        <Link href="/dashboard" className="flex items-center gap-2" aria-label="Kindred Mind">
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-9 w-9 shrink-0"
+            className="h-7 w-7 shrink-0"
           />
-          <div className="min-w-0 pt-0.5">
-            <p className="text-sm font-bold uppercase tracking-wider text-brand-primary">
-              Kindred<sup className="text-[0.5em]">®</sup>
-            </p>
-            <p className="mt-0.5 text-[9px] leading-tight text-text-muted">
-              Never let a loyal fan become a forgotten fan.
-            </p>
-          </div>
+          <span className="text-sm font-bold uppercase tracking-wider text-brand-primary">
+            Kindred<sup className="text-[0.5em]">®</sup>
+          </span>
         </Link>
         <div className="flex items-center gap-2">
           <button

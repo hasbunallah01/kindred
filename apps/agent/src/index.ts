@@ -9,7 +9,7 @@
 
 import { prisma } from '@kindred/db';
 import { startServer, type AgentServerHandle } from './server';
-import { runDigest, runStandingCheck, runMilestoneScan, SCHEDULES } from './handlers';
+import { runStandingCheck, runMilestoneScan, SCHEDULES } from './handlers';
 import { startMindsInsightListener, type SseListenerHandle } from './minds/sse-listener';
 
 // Structural type for the setInterval handles we register at boot.
@@ -237,15 +237,13 @@ async function main(): Promise<void> {
   //    behavior is to log if unhandled).
   const intervals: IntervalHandle[] = [];
 
-  // Digest: 15m. Sends batched community activity to each Mind.
-  intervals.push(
-    setInterval(() => {
-      runDigest().catch((err) =>
-        console.error('runDigest failed (will retry on next tick):', err),
-      );
-    }, SCHEDULES.digest) as unknown as IntervalHandle,
-  );
-  console.log(`mind-digest-sender scheduled (every ${SCHEDULES.digest / 60000}m)`);
+  // Digest: DISABLED for the demo. The Mind's autonomous cadence
+  // was producing a "Nth check-in" insight every 15 minutes —
+  // accurate, but not useful as a dashboard hero. The handler
+  // remains in handlers.ts (runDigest) so it can be re-enabled
+  // behind a feature flag once the Mind learns to gate insights
+  // on actual signal. For now: only inbound webhooks (real
+  // messages) drive new insight rows.
 
   // Standing check: 1h. Re-evaluates Member.status and pings each Mind.
   intervals.push(

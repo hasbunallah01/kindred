@@ -44,37 +44,28 @@ export function CommunityStatusCard({ community }: CommunityStatusCardProps) {
   return (
     <Link
       href="/dashboard/community"
-      className="group relative block overflow-hidden rounded-2xl bg-gradient-to-br from-brand-primary via-brand-primary-hover to-deep-purple p-5 text-white shadow-lg transition-all hover:shadow-xl sm:p-6"
+      className="group relative block overflow-hidden rounded-2xl bg-gradient-to-br from-brand-primary to-deep-purple p-5 text-white shadow-lg transition-all hover:shadow-xl sm:p-6"
     >
-      {/* Soft circular highlight in the corner for a subtle depth
-          effect (the reference's gradient has a similar glow). */}
-      <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-10 right-10 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
-
       <div className="relative flex items-center gap-4">
-        {/* Circular icon container, per the 2026 reference. Holds
-            the community mark (people-group icon) on a soft
-            white-translucent disk so it stays legible against the
-            gradient. */}
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm">
+        {/* Circular icon container — solid white-on-purple for
+            strong contrast at small phone sizes. */}
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/25">
           <Users className="h-6 w-6 text-white" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="truncate text-base font-semibold text-white sm:text-lg">
-              {community.telegramChatTitle || 'My Telegram Community'}
-            </h2>
-          </div>
-          <div className="mt-1 flex items-center gap-1.5 text-xs text-white/85 sm:text-sm">
+          <h2 className="truncate text-base font-semibold text-white sm:text-lg">
+            {community.telegramChatTitle || 'My Telegram Community'}
+          </h2>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-white sm:text-sm">
             <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${statusColor}`} />
-            <span>{statusLabel}</span>
+            <span className="font-medium">{statusLabel}</span>
           </div>
-          <div className="mt-0.5 text-xs text-white/70">
+          <div className="mt-0.5 text-xs text-white/90">
             Connected {connected}
-            {mindActive ? <> · <span className="text-white/85">Mind active</span></> : null}
+            {mindActive ? <> · <span className="font-medium text-white">Mind active</span></> : null}
           </div>
         </div>
-        <ChevronRight className="h-5 w-5 shrink-0 text-white/70 transition-transform group-hover:translate-x-0.5" />
+        <ChevronRight className="h-5 w-5 shrink-0 text-white/80 transition-transform group-hover:translate-x-0.5" />
       </div>
     </Link>
   );
