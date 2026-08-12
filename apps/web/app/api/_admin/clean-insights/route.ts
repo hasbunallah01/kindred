@@ -3,7 +3,25 @@ import { prisma } from '@kindred/db';
 
 // One-off admin endpoint to prune the demo community's insights
 // to a clean state. Idempotent: safe to call multiple times.
-export async function POST() {
+//
+// Returns JSON summarizing the result. The explicit
+// Promise<NextResponse> annotation on POST is required by Next.js
+// + Prisma 7 — the inferred return type references a generated
+// client type that Next.js can't name for the route registry.
+
+interface CleanResult {
+  communityId: string;
+  found: number;
+  kept: number;
+  deleted: number;
+  remaining: Array<{
+    id: string;
+    source: string;
+    preview: string;
+  }>;
+}
+
+export async function POST(): Promise<NextResponse<CleanResult | { error: string }>> {
   const community = await prisma.community.findFirst({
     where: { telegramChatId: -1003891430122n },
   });
@@ -51,7 +69,7 @@ export async function POST() {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json({
+  const result: CleanResult = {
     communityId: community.id,
     found: all.length,
     kept: keepIds.size,
@@ -61,5 +79,6 @@ export async function POST() {
       source: i.source,
       preview: i.content.slice(0, 80).replace(/\n/g, ' '),
     })),
-  });
+  };
+  return NextResponse.json(result);
 }
