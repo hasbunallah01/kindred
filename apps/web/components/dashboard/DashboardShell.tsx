@@ -251,16 +251,24 @@ export function DashboardShell({
         </div>
       </aside>
 
-      {/* ==================== DESKTOP TOP HEADER (page-level actions) ==================== */}
+      {/* ==================== DESKTOP TOP HEADER (page-level actions) ====================
+          Sits beside the sidebar (ml-60 to clear it) and contains
+          a max-w-6xl inner container that aligns with the main
+          content below. The inner container is centered, so on
+          extra-wide screens the "Connect another community"
+          button sits at the right edge of the same column as
+          the dashboard content. Hidden on mobile. */}
       {topRightAction && (
         <div className="sticky top-0 z-30 hidden border-b border-border bg-background/95 backdrop-blur sm:block">
-          <div className="ml-60 flex h-16 items-center justify-end px-8">
-            <Link
-              href={topRightAction.href}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-3.5 py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-surface"
-            >
-              {topRightAction.label}
-            </Link>
+          <div className="sm:ml-60 flex h-16 items-center px-4 sm:px-8">
+            <div className="mx-auto flex w-full max-w-6xl items-center justify-end">
+              <Link
+                href={topRightAction.href}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-3.5 py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-surface"
+              >
+                {topRightAction.label}
+              </Link>
+            </div>
           </div>
         </div>
       )}
@@ -318,14 +326,32 @@ export function DashboardShell({
       </nav>
 
       {/* ==================== MAIN CONTENT ====================
-          The bottom padding on small screens keeps the last
-          content row from sitting under the fixed bottom nav. */}
+          On desktop (`sm:`), the main starts at x=240 (ml-60) to
+          make room for the fixed sidebar and EXPANDS to fill
+          the remaining viewport — this is the structural fix
+          the user identified. The previous version had
+          `mx-auto w-full max-w-5xl`, which capped the content
+          at 1024px and centered it, leaving a huge blank area
+          on wide screens. Now the main is just `sm:ml-60` with
+          a `min-h-screen` to keep it the full viewport height,
+          and the max-width constraint is moved INSIDE to a
+          child container (`max-w-6xl` = 1152px). On a 1280px
+          desktop, the content area gets the full 1040px (1280
+          − 240). On a 1920px desktop, the inner container is
+          centered at 1152px and the sidebar still hugs the left
+          edge. On mobile, no `sm:ml-60`, full width as before. */}
       <main
-        className={`mx-auto w-full max-w-5xl px-4 pb-32 pt-6 sm:ml-60 sm:px-8 sm:pb-16 ${
-          topRightAction ? 'sm:pt-8' : 'sm:pt-10'
+        className={`min-h-screen pb-32 sm:ml-60 sm:pb-16 ${
+          topRightAction ? 'pt-0' : 'pt-0'
         }`}
       >
-        {children}
+        <div
+          className={`mx-auto w-full max-w-6xl px-4 sm:px-8 ${
+            topRightAction ? 'pt-6 sm:pt-8' : 'pt-6 sm:pt-10'
+          }`}
+        >
+          {children}
+        </div>
       </main>
     </div>
   );
