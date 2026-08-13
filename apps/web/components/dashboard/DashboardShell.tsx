@@ -184,45 +184,22 @@ export function DashboardShell({
     <div className="min-h-screen bg-surface text-text-primary">
       {/* ==================== DESKTOP SIDEBAR (dark purple) ==================== */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden h-screen w-60 flex-col overflow-y-auto bg-gradient-to-b from-deep-purple via-deep-purple to-brand-primary px-4 py-6 sm:flex">
-        {/* Brand mark: the wide PNG (441x119, 3.71:1) at h-12.
-            Backing it with a text + icon fallback so the brand
-            mark is always visible even if the PNG is slow to
-            load or blocked — the text is in pure CSS and the
-            icon is an inline SVG, no external asset dependency.
-            The PNG sits on top via z-10. */}
+        {/* Brand mark: just the wide PNG (441x119, 3.71:1). No
+            CSS fallback, no absolute positioning, no layering
+            — those caused the image to be clipped. The image
+            is a direct child of the Link, sized to fit the
+            sidebar's content width with object-contain to
+            preserve the aspect ratio of the original asset. */}
         <Link
           href="/dashboard"
-          className="relative mb-8 flex h-12 shrink-0 items-center gap-2"
+          className="mb-8 block shrink-0"
           aria-label="Kindred Mind"
         >
-          {/* CSS fallback — always visible, sits behind the PNG */}
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-pink-400 to-brand-primary text-base font-bold text-white">
-            K
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold uppercase tracking-wider text-white">
-              Kindred<sup className="text-[0.5em]">®</sup>
-            </p>
-            <p className="mt-0.5 text-[9px] leading-tight text-white/70">
-              Never let a loyal fan become a forgotten fan.
-            </p>
-          </div>
-          {/* PNG sits on top via absolute positioning. The
-              explicit inline style forces a known display size
-              regardless of any cached/stale Tailwind classes. */}
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind — never let a loyal fan become a forgotten fan."
-            width="208"
-            height="56"
-            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-            style={{
-              display: 'block',
-              minHeight: '48px',
-              minWidth: '160px',
-              zIndex: 10,
-            }}
-            loading="eager"
+            className="block h-16 w-full object-contain"
+            style={{ maxHeight: '72px' }}
           />
         </Link>
         <nav className="flex flex-col gap-1">
