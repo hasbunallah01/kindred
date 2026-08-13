@@ -227,13 +227,25 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
 // reason about — adding more filter conditions here (other
 // zero-signal patterns the Mind tends to send) is a one-line
 // change.
+//
+// The previous version of this regex tried to enumerate every
+// ordinal word and a `\d+(?:st|nd|rd|th)` numeric ordinal, but
+// the Mind actually uses compound hyphenated ordinals: "First
+// check-in", "Twenty-fifth check-in", "Thirty-ninth check-in",
+// "Fifty-sixth check-in", "Forty-second check-in", etc. — a
+// tens-word hyphen a units-ordinal. The previous regex matched
+// neither "Twenty-fifth" (no `th` suffix on "Twenty") nor
+// "Fifty-sixth" (the `sixth` is in the regex but the leading
+// "Fifty-" broke the start anchor).
+//
+// Simpler, more robust rule: the FIRST LINE of the content ends
+// with "check-in" or "checkin." That's the Mind's canonical
+// steady-state format — every check-in starts with the ordinal
+// + " check-in." on its own line, and ends with the body
+// (which we never reach because we drop at the first line).
 function isCheckInBoilerplate(content: string): boolean {
-  const trimmed = content.trim();
-  // "<Number/Ordinal> check-in." — covers "First", "Second", "Third",
-  // "Fourth", "Fifth", "Thirty-ninth", "Forty-second", etc.
-  return /^(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(?:st|nd|rd|th))[-\s]?check[-\s]?in\.?/i.test(
-    trimmed,
-  );
+  const firstLine = content.trim().split('\n', 1)[0] ?? '';
+  return /\bcheck[-\s]?in\.?\s*$/i.test(firstLine);
 }
 
 // Convenience wrapper for apps/agent/src/index.ts — starts the listener
