@@ -183,16 +183,22 @@ export function DashboardShell({
   return (
     <div className="min-h-screen bg-surface text-text-primary">
       {/* ==================== DESKTOP SIDEBAR (dark purple) ==================== */}
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-gradient-to-b from-deep-purple via-deep-purple to-brand-primary px-4 py-6 sm:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden h-screen w-60 flex-col overflow-y-auto bg-gradient-to-b from-deep-purple via-deep-purple to-brand-primary px-4 py-6 sm:flex">
         {/* Brand mark: a single wide PNG (441x119, 3.71:1) that
             contains the K-mark + 'KINDRED®' + tagline. Stretched
-            to fit the sidebar's 240px content width. No CSS text
-            overlay — the image IS the brand mark. */}
-        <Link href="/dashboard" className="mb-8 block">
+            to fit the sidebar's 240px content width. The explicit
+            `style` ensures the image renders even if a CSS layer
+            is missing the `h-9` or `w-full` class for any reason
+            — belt-and-suspenders so the brand mark is always
+            visible on desktop. */}
+        <Link href="/dashboard" className="mb-8 block shrink-0">
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind"
-            className="h-9 w-full object-contain"
+            width="208"
+            height="56"
+            className="h-12 w-full object-contain"
+            style={{ minHeight: '48px', minWidth: '160px' }}
           />
         </Link>
         <nav className="flex flex-col gap-1">
