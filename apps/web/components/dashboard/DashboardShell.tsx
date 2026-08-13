@@ -184,30 +184,26 @@ export function DashboardShell({
     <div className="min-h-screen bg-surface text-text-primary">
       {/* ==================== DESKTOP SIDEBAR (dark purple) ==================== */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden h-screen w-60 flex-col overflow-y-auto bg-gradient-to-b from-deep-purple via-deep-purple to-brand-primary px-4 py-6 sm:flex">
-        {/* Brand mark: the actual logo PNG from /brand/. The
-            asset's intrinsic colors are dark navy on a light
-            background — that combination is correct for the
-            mobile top header (light surface) but invisible on
-            the dark purple sidebar. CSS `filter: invert(1)`
-            flips the colors so the dark text becomes light,
-            keeping the brand mark visually identical to the
-            original (same composition, same proportions, same
-            heart+people icon) just rendered in light tones
-            for a dark surface. No SVG, no placeholder, no
-            re-rendering — the actual logo file from the repo. */}
+        {/* Brand mark: the actual /brand/kindred-logo.png from
+            the repo, sitting on a white card. The PNG has dark
+            navy KINDRED text on a transparent background — that
+            works perfectly on the mobile top header (light
+            surface, no card) but is invisible on the dark
+            purple sidebar. Putting the same PNG on a small
+            white background card makes the brand mark read
+            exactly the same as on the phone, just framed by a
+            white tile inside the dark sidebar. No filter, no
+            color inversion, no SVG placeholder — the actual
+            logo file from the repo, untouched. */}
         <Link
           href="/dashboard"
-          className="mb-8 block shrink-0"
+          className="mb-8 block shrink-0 rounded-2xl bg-white p-3 shadow-sm"
           aria-label="Kindred Mind — never let a loyal fan become a forgotten fan."
         >
           <img
             src="/brand/kindred-logo.png"
             alt="Kindred Mind — never let a loyal fan become a forgotten fan."
-            className="block h-16 w-full object-contain"
-            style={{
-              maxHeight: '72px',
-              filter: 'invert(1) hue-rotate(180deg)',
-            }}
+            className="block h-12 w-full object-contain"
           />
         </Link>
         <nav className="flex flex-col gap-1">
