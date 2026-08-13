@@ -184,54 +184,31 @@ export function DashboardShell({
     <div className="min-h-screen bg-surface text-text-primary">
       {/* ==================== DESKTOP SIDEBAR (dark purple) ==================== */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden h-screen w-60 flex-col overflow-y-auto bg-gradient-to-b from-deep-purple via-deep-purple to-brand-primary px-4 py-6 sm:flex">
-        {/* Brand mark: a CSS-only rendering of the KINDRED brand.
-            The PNG asset (`/brand/kindred-logo.png`) has dark navy
-            text on a light background — invisible on the dark
-            purple sidebar. The phone uses the same PNG on a light
-            surface, where it looks great. The sidebar needs the
-            same brand mark but in light tones for legibility.
-
-            Approach: render the icon as an inline SVG with
-            light-tinted fills, and render KINDRED + the tagline
-            as text in white. One element per brand component, no
-            PNG to invert, no contrast issues, no clipping. */}
+        {/* Brand mark: the actual logo PNG from /brand/. The
+            asset's intrinsic colors are dark navy on a light
+            background — that combination is correct for the
+            mobile top header (light surface) but invisible on
+            the dark purple sidebar. CSS `filter: invert(1)`
+            flips the colors so the dark text becomes light,
+            keeping the brand mark visually identical to the
+            original (same composition, same proportions, same
+            heart+people icon) just rendered in light tones
+            for a dark surface. No SVG, no placeholder, no
+            re-rendering — the actual logo file from the repo. */}
         <Link
           href="/dashboard"
-          className="mb-8 flex shrink-0 items-start gap-2.5"
+          className="mb-8 block shrink-0"
           aria-label="Kindred Mind — never let a loyal fan become a forgotten fan."
         >
-          {/* Heart+people icon, light-tinted. Uses an inline SVG
-              (not a PNG) so the colors stay crisp at any size
-              and match the sidebar's palette. */}
-          <svg
-            viewBox="0 0 64 56"
-            className="h-10 w-10 shrink-0"
-            aria-hidden
-          >
-            {/* Purple K figure */}
-            <path
-              d="M14 6c-3.3 0-6 2.7-6 6v15c0 6 5 11 11 11h2c1 0 1.5-1 1-2l-3-4c-1-1.5 0-3.5 1.5-3.5h2.5c1.5 0 2.5-2 1.5-3.5L18 19c-1-1.5 0-3.5 1.5-3.5h1.5c1 0 1.5-1 1-2l-3-4c-1-1.5 0-3.5 1.5-3.5h.5c.5 0 1-.3 1-.8V7c0-.6-.5-1-1-1h-5z"
-              fill="#C4B5FD"
-            />
-            {/* Peach/orange figure */}
-            <path
-              d="M36 16c-3.3 0-6 2.7-6 6v12c0 4 3 7 7 7h3c1 0 1.7-1 1.3-2l-2-5c-.5-1.3.5-2.5 1.8-2.5h2.5c1.5 0 2.5-2 1.5-3.5l-3-4.5c-1-1.5 0-3.5 1.5-3.5h.5c.5 0 1-.3 1-.8V17c0-.6-.5-1-1-1h-8z"
-              fill="#FB923C"
-            />
-            {/* White heart overlap */}
-            <path
-              d="M26 36c-2 0-3 1.5-3 3 0 2 1.5 3 3 3h12c1.5 0 3-1 3-3 0-1.5-1-3-3-3H26z"
-              fill="#FFFFFF"
-            />
-          </svg>
-          <div className="min-w-0 flex-1 pt-0.5">
-            <p className="text-base font-bold uppercase tracking-wider text-white">
-              Kindred<sup className="text-[0.5em]">®</sup>
-            </p>
-            <p className="mt-0.5 text-[10px] leading-tight text-white/70">
-              Never let a loyal fan become a forgotten fan.
-            </p>
-          </div>
+          <img
+            src="/brand/kindred-logo.png"
+            alt="Kindred Mind — never let a loyal fan become a forgotten fan."
+            className="block h-16 w-full object-contain"
+            style={{
+              maxHeight: '72px',
+              filter: 'invert(1) hue-rotate(180deg)',
+            }}
+          />
         </Link>
         <nav className="flex flex-col gap-1">
           {NAV_ITEMS.map((item) => renderNavLink(item, 'sidebar'))}
