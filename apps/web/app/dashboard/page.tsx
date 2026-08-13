@@ -112,18 +112,7 @@ export default async function DashboardPage() {
   const greeting = greetingFor(new Date());
 
   return (
-    <DashboardShell
-      username={username}
-      email={email}
-      topRightAction={
-        community
-          ? {
-              href: '/onboarding/group',
-              label: 'Connect another community',
-            }
-          : null
-      }
-    >
+    <DashboardShell username={username} email={email}>
       <div className="flex flex-col gap-7">
         {/* ==================== 1. GREETING ==================== */}
         <header className="flex flex-col gap-1">
