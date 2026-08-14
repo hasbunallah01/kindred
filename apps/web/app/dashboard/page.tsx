@@ -15,22 +15,34 @@ import { CommunityStatusCard } from '@/components/dashboard/CommunityStatusCard'
 import { WhatKindredNoticed } from '@/components/dashboard/WhatKindredNoticed';
 import { InsightListItem } from '@/components/dashboard/InsightListItem';
 
-// Kindred Mind dashboard (2026 redesign) — the primary authenticated
-// product surface.
+// Kindred Mind dashboard — the primary authenticated product
+// surface. Answers one question: "What should the community
+// creator know right now?"
 //
-// Information hierarchy (per the redesign brief):
-//   1. Greeting ("Good afternoon, haybeewriting6 👋")
-//   2. Community status card (gradient purple, visually strong)
-//   3. "What Kindred noticed" — the HERO, surfaces the most recent
-//      insight as a personalized AI observation
-//   4. Community Memory — three compact stat cards (Members /
-//      Relationships / Moments), intentionally small because they
-//      support the hero rather than dominate the page
-//   5. Recent insights — list of AI-observation rows
+// Information hierarchy:
+//   1. Greeting (small, welcoming)
+//   2. Community status card (the primary context — which
+//      community is being monitored, connection state)
+//   3. "What Kindred noticed" — the HERO intelligence
+//   4. Community memory — three compact stat cards
+//   5. Recent insights — meaningful observations only
 //
-// Server component: auth is real (not middleware-only), data is
-// fetched per-request from Prisma. No mock data anywhere — every
-// number on the page comes from a real query on real DB rows.
+// Check-in boilerplate filter: the Mind emits steady-state
+// "Nth check-in" messages that are accurate but not useful
+// for a creator-facing Overview. The agent SSE listener drops
+// them at the boundary (see apps/agent/src/minds/sse-listener.ts),
+// but defense-in-depth: we also filter at the UI layer so any
+// check-in that slipped through (e.g. from older agent versions
+// or the Minds API directly) is still hidden from Overview.
+// These still appear on the full /dashboard/insights page.
+
+// Pattern matches the Mind's canonical check-in format: the
+// first line ends with "check-in" or "checkin." (e.g.
+// "Forty-second check-in. Same read.").
+function isCheckInBoilerplate(content: string): boolean {
+  const firstLine = content.trim().split('\n', 1)[0] ?? '';
+  return /\bcheck[-\s]?in\.?\s*$/i.test(firstLine);
+}
 
 function greetingFor(date: Date): string {
   const hour = date.getHours();
@@ -73,50 +85,50 @@ export default async function DashboardPage() {
       })
     : 0;
 
-  const meaningfulMoments = community
-    ? await prisma.insight.count({ where: { communityId: community.id } })
-    : 0;
-
-  // For the hero we prefer an "autonomous" insight (the Mind talking
-  // on its own), but fall back to the most recent insight of any
-  // source so the hero is never empty when there is data.
-  const heroInsight = community
-    ? await prisma.insight.findFirst({
-        where: {
-          communityId: community.id,
-          source: 'autonomous',
-        },
-        orderBy: { createdAt: 'desc' },
-      }) ??
-      (await prisma.insight.findFirst({
-        where: { communityId: community.id },
-        orderBy: { createdAt: 'desc' },
-      }))
-    : null;
-
-  // The recent-insights list: 5 most recent (excluding the hero
-  // one, so we don't double-show it). Capped to 5 to keep the list
-  // calm — anything more would push the user toward the dedicated
-  // /dashboard/insights page.
-  const recentInsights = community
+  // The "Moments" stat counts only the meaningful insights — the
+  // check-in boilerplate is excluded so the count represents real
+  // relationship intelligence, not internal monitoring events.
+  const allInsights = community
     ? await prisma.insight.findMany({
-        where: {
-          communityId: community.id,
-          ...(heroInsight ? { id: { not: heroInsight.id } } : {}),
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
+        where: { communityId: community.id },
+        select: { id: true, content: true, createdAt: true, source: true },
       })
     : [];
+
+  const meaningfulMoments = allInsights.filter(
+    (i) => !isCheckInBoilerplate(i.content),
+  ).length;
+
+  // For the hero we prefer a meaningful, non-check-in autonomous
+  // insight. If none exists, fall back to the most recent
+  // meaningful insight of any source. Check-in boilerplate is
+  // excluded from the hero too — the hero should always be
+  // human-facing, not a monitoring event.
+  const meaningfulInsights = allInsights
+    .filter((i) => !isCheckInBoilerplate(i.content))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  const heroInsight = meaningfulInsights[0] ?? null;
+
+  // Recent insights list: up to 3 of the most recent MEANINGFUL
+  // insights (excluding the hero, so we don't double-show).
+  // Capped at 3 (was 5) so the Overview surface stays focused on
+  // signal, not on listing every event.
+  const recentInsights = meaningfulInsights
+    .filter((i) => (heroInsight ? i.id !== heroInsight.id : true))
+    .slice(0, 3);
 
   const greeting = greetingFor(new Date());
 
   return (
     <DashboardShell username={username} email={email}>
-      <div className="flex flex-col gap-7">
-        {/* ==================== 1. GREETING ==================== */}
+      <div className="flex flex-col gap-5 sm:gap-6">
+        {/* ==================== 1. GREETING ====================
+            Intentionally small — the greeting welcomes, it doesn't
+            dominate. The community card immediately below carries
+            the visual weight. */}
         <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
+          <h1 className="text-xl font-bold tracking-tight text-text-primary sm:text-2xl">
             {greeting}, {username ?? 'there'} <span aria-hidden>👋</span>
           </h1>
           <p className="text-sm text-text-secondary sm:text-base">
@@ -126,7 +138,11 @@ export default async function DashboardPage() {
           </p>
         </header>
 
-        {/* ==================== 2. COMMUNITY STATUS (or welcome) ==================== */}
+        {/* ==================== 2. COMMUNITY STATUS (or welcome) ====================
+            The primary context card — which community is connected,
+            what's its status, where does the Mind live. The full
+            purple gradient signals "this is the Kindred-managed
+            surface" and gives the page its first color anchor. */}
         {community ? (
           <CommunityStatusCard community={community} />
         ) : (
@@ -151,8 +167,10 @@ export default async function DashboardPage() {
         )}
 
         {/* ==================== 3. WHAT KINDRED NOTICED (hero) ====================
-            This is the visual centerpiece of the new dashboard — the
-            product's value proposition rendered as a real observation. */}
+            The dashboard's hero intelligence. The most important
+            single relationship observation the creator can see.
+            Soft purple surface to read as "AI observation" — distinct
+            from the white insight list below. */}
         {community && (
           <WhatKindredNoticed
             insight={heroInsight}
@@ -160,13 +178,17 @@ export default async function DashboardPage() {
           />
         )}
 
-        {/* ==================== 4. COMMUNITY MEMORY (supporting metrics) ==================== */}
+        {/* ==================== 4. COMMUNITY MEMORY (supporting metrics) ====================
+            Three compact stat cards. The numbers come from real DB
+            counts (not hard-coded) but they SUPPORT the hero above
+            — they don't try to be the headline. On desktop they sit
+            in a horizontal row; on mobile they stack. */}
         {community && (
           <section className="flex flex-col gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
               Community memory
             </h2>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
               <StatCard
                 label="Members"
                 value={memberCount.toLocaleString()}
@@ -195,7 +217,11 @@ export default async function DashboardPage() {
           </section>
         )}
 
-        {/* ==================== 5. RECENT INSIGHTS (list) ==================== */}
+        {/* ==================== 5. RECENT INSIGHTS (list) ====================
+            Up to 3 MEANINGFUL insights (the check-in boilerplate
+            filter is applied above). This is signal, not log —
+            the raw history is on /dashboard/insights for anyone
+            who wants it. */}
         {community && recentInsights.length > 0 && (
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">

@@ -88,6 +88,14 @@ export function WhatKindredNoticed({ insight }: WhatKindredNoticedProps) {
         <h2 className="flex items-center gap-2 text-sm font-semibold text-text-primary sm:text-base">
           <Sparkles className="h-4 w-4 text-brand-primary" />
           What Kindred noticed
+          {/* "Live" pill: a subtle green dot + label that signals
+              "Kindred is actively observing your community right
+              now" — a small but important cue that this isn't a
+              static report, it's a live intelligence surface. */}
+          <span className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+            Live
+          </span>
         </h2>
         <Link
           href="/dashboard/insights"
