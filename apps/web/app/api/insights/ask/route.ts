@@ -9,22 +9,23 @@ import { sendMessage, getMessageHistory, htmlToText } from '@kindred/minds-clien
 // the source — Ask Kindred must not turn into an unbounded listener.
 //
 // Measured Mind reply latency on this Mind (production test, 2026-08-19):
-//   75-200+ seconds, with a long tail on substantive questions
-//   after the Mind has been idle. The Mind does real interpretation
-//   work (relationship synthesis over the event stream), so its
-//   response is slower than a typical LLM echo. 230s catches the
-//   observed upper range with ~30s of safety margin and stays well
-//   under the team's Vercel functionDefaultTimeout=300s ceiling
-//   (maxDuration=240 below). Anything past 230s still gets the
-//   fallback path — the agent's SSE listener records the same
-//   reply as a source='autonomous' Insight — but the Ask modal
-//   itself will already have closed.
-const MAX_WAIT_MS = 230_000;
+//   60-240+ seconds, with the long tail creeping up over the
+//   course of testing as the Mind did more interpretation work.
+//   The Mind does real synthesis (relationship analysis over the
+//   event stream), so its response is slower than a typical LLM
+//   echo. 280s catches the observed upper range (4-minute replies)
+//   with ~40s of safety margin and stays well under the team's
+//   Vercel functionDefaultTimeout=300s ceiling (maxDuration=290
+//   below). Anything past 280s still gets the fallback path — the
+//   agent's SSE listener records the same reply as a
+//   source='autonomous' Insight — but the Ask modal itself will
+//   already have closed.
+const MAX_WAIT_MS = 280_000;
 
 // How often to re-check the conversation history while waiting for
 // the Mind's reply. 2s is a small-enough interval to feel responsive
 // on success and large-enough to keep the Minds API request count
-// well under any rate limit. (230s / 2s = ~115 polls worst case —
+// well under any rate limit. (280s / 2s = ~140 polls worst case —
 // still well under the official Builder API's quotas.)
 const POLL_INTERVAL_MS = 2000;
 
@@ -39,18 +40,18 @@ const RECENT_CONTEXT_EVENT_LIMIT = 20;
 // Dedupe window. If the same Mind response is observed by both the Ask
 // route and the agent's SSE listener (apps/agent/src/minds/sse-listener.ts),
 // the second one to write a row would create a duplicate. The check is
-// a content match within this window for the same community — 5
-// minutes is comfortably more than the 230s polling budget here, so
+// a content match within this window for the same community — 10
+// minutes is comfortably more than the 280s polling budget here, so
 // any reply we DID see in Ask has had a chance to land via the SSE
-// listener by then, and vice versa.
-const DEDUPE_WINDOW_MS = 300_000;
+// listener by then, and vice versa, with a wide margin.
+const DEDUPE_WINDOW_MS = 600_000;
 
 // Vercel function timeout. The team's defaultResourceConfig.
-// functionDefaultTimeout is 300s (Enterprise tier), so 240s is well
+// functionDefaultTimeout is 300s (Enterprise tier), so 290s is well
 // within the platform's allowed ceiling. The route's wall-clock
-// budget above (230s) leaves 10s of headroom for auth + DB +
+// budget above (280s) leaves 10s of headroom for auth + DB +
 // sendMessage + the final response payload over the wire.
-export const maxDuration = 240;
+export const maxDuration = 290;
 export const dynamic = 'force-dynamic';
 
 interface AskRequestBody {
