@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@kindred/db';
-import { sendMessage, getMessageHistory, htmlToText } from '@kindred/minds-client';
+import { sendMessage } from '@kindred/minds-client';
 
 // Bounded wait, expressed as a wall-clock deadline. Hard-coded
 // rather than reading from an env var so the bound is auditable in
@@ -36,15 +36,6 @@ const POLL_INTERVAL_MS = 2000;
 // 20 is a deliberately small number — the digest exists precisely so
 // Ask doesn't have to carry the whole history itself.
 const RECENT_CONTEXT_EVENT_LIMIT = 20;
-
-// Dedupe window. If the same Mind response is observed by both the Ask
-// route and the agent's SSE listener (apps/agent/src/minds/sse-listener.ts),
-// the second one to write a row would create a duplicate. The check is
-// a content match within this window for the same community — 10
-// minutes is comfortably more than the 280s polling budget here, so
-// any reply we DID see in Ask has had a chance to land via the SSE
-// listener by then, and vice versa, with a wide margin.
-const DEDUPE_WINDOW_MS = 600_000;
 
 // Vercel function timeout. The team's defaultResourceConfig.
 // functionDefaultTimeout is 300s (Enterprise tier), so 290s is well
@@ -101,31 +92,10 @@ function formatRecentContext(events: RecentEventRow[]): string {
   return lines.join('\n');
 }
 
-// Returns the existing insight row that should "stand in" for the
-// answer we're about to record, if one was just created by the
-// agent's SSE listener (or by a previous, faster Ask that raced
-// with us). The dedupe key is (communityId, content) within a
-// recent time window: the Mind's reply is small enough that exact
-// content match is a reliable signal. Returns null when no match
-// exists — caller proceeds to create a fresh row.
-async function findRecentDuplicateInsight(
-  communityId: string,
-  content: string,
-): Promise<{ id: string } | null> {
-  const since = new Date(Date.now() - DEDUPE_WINDOW_MS);
-  return prisma.insight.findFirst({
-    where: {
-      communityId,
-      content,
-      createdAt: { gte: since },
-    },
-    select: { id: true },
-  });
-}
-
 // Build Plan Checkpoint 49 — the reactive round trip (Blueprint Section
-// 6.7): send the creator's question to the Mind, then poll
-// GetMessageHistory for its reply with a bounded wall-clock deadline.
+// 6.7): send the creator's question to the Mind, then poll the DB
+// (via the agent's SSE listener path) for the resulting Insight
+// row, with a bounded wall-clock deadline.
 //
 // Audit fix (this iteration): the previous version used a fixed
 // 6-iteration × 1-second sleep loop — a budget of ~6 seconds — that
@@ -143,10 +113,25 @@ async function findRecentDuplicateInsight(
 // both this route (which records source='reactive') and the agent's
 // SSE listener (which records source='autonomous'). To prevent
 // duplicate Insight rows, both paths now dedupe on
-// (communityId, content) within DEDUPE_WINDOW_MS — see
-// apps/agent/src/minds/sse-listener.ts for the symmetric check.
-// Both paths also run the same `htmlToText` on the raw messageText
-// before persisting, so the content string actually matches.
+// Audit fix (this iteration): the previous implementation polled
+// the REST GetMessageHistory endpoint for a new message. Live
+// production test (2026-08-19) showed that even after the Mind
+// had replied and the agent's SSE listener had written a
+// source='autonomous' Insight row, the REST history endpoint
+// could lag indefinitely — the polling loop ran 280 seconds and
+// never saw the new message. The official Minds Builder API has
+// eventual consistency between the SSE event stream and the REST
+// GetMessageHistory index: SSE events fire immediately, the REST
+// index catches up seconds-to-minutes later (and sometimes not
+// at all in the polling window). The SSE listener's DB write is
+// the canonical "Mind has replied" signal — this route now polls
+// the DB instead of the REST history, which catches the SSE
+// listener's write as soon as it commits (sub-second from the
+// Mind's reply, vs. multi-minute REST lag). On a hit, the
+// existing source='autonomous' row is promoted to
+// source='reactive' (the Ask path claiming it) instead of
+// creating a duplicate — so the symmetric dedupe check in
+// apps/agent/src/minds/sse-listener.ts still has nothing to do.
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
@@ -194,61 +179,88 @@ export async function POST(request: Request) {
     : '';
   const composedQuestion = `${contextBlock}<question>\n${question}\n</question>`;
 
-  const beforeCount = (await getMessageHistory(alias)).messages.length;
+  // Capture the most recent insight's createdAt BEFORE we send the
+  // question. The polling loop below will look for any insight with
+  // createdAt > this cutoff, so anything the agent's SSE listener
+  // (apps/agent/src/minds/sse-listener.ts) writes in response to
+  // the question is what the Ask modal will surface.
+  //
+  // Why poll the DB instead of getMessageHistory (the REST history
+  // endpoint)? Measured production bug (live test, 2026-08-19):
+  // the Mind replied and the SSE listener caught the reply and
+  // wrote a source='autonomous' Insight within 17 seconds of the
+  // Mind's last message, but the Ask route's getMessageHistory
+  // polling never saw the new message in 280 seconds of polling
+  // and timed out. The official Minds Builder API has eventual
+  // consistency between the SSE event stream and the REST
+  // GetMessageHistory endpoint — the SSE event fires
+  // immediately, the REST indexing catches up seconds-to-minutes
+  // later. The SSE listener's DB write is the canonical "Mind has
+  // replied" signal; polling the REST history from this route is
+  // racy. Polling the DB picks up the SSE listener's write as
+  // soon as it commits, which is sub-second from the Mind's reply.
+  const latestBeforeAsk = await prisma.insight.findFirst({
+    where: { communityId: community.id },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  const insightCutoff = latestBeforeAsk?.createdAt ?? new Date(0);
+
   await sendMessage(alias, composedQuestion);
 
-  // Bounded polling: check the conversation history immediately
-  // first, then poll every POLL_INTERVAL_MS until the wall-clock
-  // deadline passes or the Mind replies. Exits as soon as we see a
-  // new non-user message — that "exit on first match" is what makes
-  // the route feel snappy on the fast path.
+  // Bounded polling: check the DB for a new insight every
+  // POLL_INTERVAL_MS until the wall-clock deadline passes. Exits
+  // as soon as we see a new insight whose createdAt is past the
+  // cutoff — that "exit on first match" is what makes the route
+  // feel snappy on the fast path. The SSE listener's check-in
+  // filter (apps/agent/src/minds/sse-listener.ts) means check-in
+  // boilerplate never reaches the DB, so anything that does
+  // appear is the Mind's real reply to the question (or another
+  // genuine autonomous insight; either way, it's the most recent
+  // thing the Mind said and is what the user is asking for).
   const deadline = Date.now() + MAX_WAIT_MS;
-  let answer: string | null = null;
+  let answerInsight: { id: string; content: string } | null = null;
   while (Date.now() < deadline) {
-    const history = await getMessageHistory(alias);
-    if (history.messages.length > beforeCount) {
-      const newest = history.messages[history.messages.length - 1];
-      if (newest && newest.role !== 'user') {
-        // Strip HTML before storing (or before any dedupe lookup)
-        // so the content matches what the SSE listener would have
-        // written for the same reply — see findRecentDuplicateInsight
-        // above for why this matters.
-        answer = htmlToText(newest.content);
-        break;
-      }
+    const newInsight = await prisma.insight.findFirst({
+      where: {
+        communityId: community.id,
+        createdAt: { gt: insightCutoff },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, content: true },
+    });
+    if (newInsight) {
+      answerInsight = newInsight;
+      break;
     }
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
     await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_INTERVAL_MS, remaining)));
   }
 
-  if (!answer) {
+  if (!answerInsight) {
     // Don't mark the events sentToMind on a timeout — the Mind may
     // still be processing, and if it eventually answers it deserves to
     // have seen the context. The next Ask or the next digest will
-    // re-deliver. The Mind's late reply will also be picked up by
-    // the agent's SSE listener and recorded as a source='autonomous'
-    // Insight (with the same dedupe window, so it won't collide
-    // with a future Ask that did succeed).
+    // re-deliver. If the Mind's late reply does arrive, the SSE
+    // listener's dedupe check (apps/agent/src/minds/sse-listener.ts)
+    // means it won't double-write a row even if a later Ask succeeds.
     return NextResponse.json({ error: 'The Mind did not respond in time.' }, { status: 504 });
   }
 
-  // Dedupe against an existing insight the SSE listener may have
-  // already written for this exact reply (it can race ahead of us
-  // if the Mind replies faster than the first poll). If a recent
-  // row with matching content exists, reuse its id instead of
-  // creating a second row. The mirror check lives in the SSE
-  // listener so whichever path fires second sees the other.
-  const existing = await findRecentDuplicateInsight(community.id, answer);
-  if (existing) {
-    if (recentEvents.length > 0) {
-      await prisma.relationshipEvent.updateMany({
-        where: { id: { in: recentEvents.map((event) => event.id) } },
-        data: { sentToMind: true, sentToMindAt: new Date() },
-      });
-    }
-    return NextResponse.json({ answer, insightId: existing.id });
-  }
+  // Promote the source to 'reactive' so the UI can distinguish
+  // "this insight was the answer to an explicit Ask" from a
+  // normal autonomous interpretation. The SSE listener's write
+  // was source='autonomous' (it doesn't know which questions the
+  // creator is actively waiting on); this is the Ask path
+  // claiming it. Idempotent — if the SSE listener also wrote a
+  // row with the same content, the dedupe check on its side
+  // already prevented the duplicate, so this update just labels
+  // the existing row.
+  await prisma.insight.update({
+    where: { id: answerInsight.id },
+    data: { source: 'reactive' },
+  });
 
   // Only mark the events sentToMind AFTER a successful reply, so the
   // digest worker doesn't double-deliver them and we don't poison the
@@ -260,13 +272,5 @@ export async function POST(request: Request) {
     });
   }
 
-  const insight = await prisma.insight.create({
-    data: {
-      communityId: community.id,
-      source: 'reactive',
-      content: answer,
-    },
-  });
-
-  return NextResponse.json({ answer, insightId: insight.id });
+  return NextResponse.json({ answer: answerInsight.content, insightId: answerInsight.id });
 }
