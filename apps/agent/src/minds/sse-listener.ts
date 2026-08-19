@@ -10,7 +10,7 @@ import { sanitizeEnvValue, htmlToText } from '@kindred/minds-client';
 // timed out and returned 504 (in which case the SSE listener is
 // the only writer). Either way, 240s is enough headroom that the
 // two writers don't accidentally miss each other.
-const DEDUPE_WINDOW_MS = 240_000;
+const DEDUPE_WINDOW_MS = 300_000;
 
 // Persistent connection to SubscribeEvents on the official Hello Minds
 // Builder API (Blueprint Section 6.4/6.6). Node.js has no native
