@@ -2,14 +2,22 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@kindred/db';
-import { sendMessage, getMessageHistory } from '@kindred/minds-client';
+import { sendMessage, getMessageHistory, htmlToText } from '@kindred/minds-client';
 
-// Kept conservatively short — Vercel's default serverless function
-// duration on the Hobby plan is 10s, and this route needs headroom for
-// auth/DB overhead on top of the polling loop itself. 6 attempts * 1s =
-// 6s of polling.
-const POLL_INTERVAL_MS = 1000;
-const MAX_POLL_ATTEMPTS = 6;
+// Bounded wait, expressed as a wall-clock deadline. The route must stay
+// under Vercel's maxDuration (set just below to 60s, the Pro plan cap;
+// 52s leaves 8s of headroom for auth, DB lookups, and the Minds API
+// sendMessage round-trip at the start of the request). Hard-coded
+// rather than reading from an env var so the bound is auditable in
+// the source — Ask Kindred must not turn into an unbounded listener.
+const MAX_WAIT_MS = 52_000;
+
+// How often to re-check the conversation history while waiting for
+// the Mind's reply. 1.5s is a small-enough interval to feel
+// responsive on success and large-enough to keep the Minds API
+// request count well under any rate limit. (52s / 1.5s = ~35 polls,
+// ~35 history GETs — well under the official Builder API's quotas.)
+const POLL_INTERVAL_MS = 1500;
 
 // How many of the most recent unsent relationship events to surface as
 // context alongside the question. Capped to keep the message well under
@@ -18,6 +26,24 @@ const MAX_POLL_ATTEMPTS = 6;
 // 20 is a deliberately small number — the digest exists precisely so
 // Ask doesn't have to carry the whole history itself.
 const RECENT_CONTEXT_EVENT_LIMIT = 20;
+
+// Dedupe window. If the same Mind response is observed by both the Ask
+// route and the agent's SSE listener (apps/agent/src/minds/sse-listener.ts),
+// the second one to write a row would create a duplicate. The check is
+// a content match within this window for the same community — a 90s
+// upper bound on how long a single Mind reply takes, which is more
+// than the 52s polling budget here, so any reply we DID see in Ask
+// has had a chance to land via the SSE listener by then, and vice
+// versa.
+const DEDUPE_WINDOW_MS = 90_000;
+
+// Vercel function timeout. Pro plan caps at 60s, Enterprise at 300s;
+// declaring it explicitly removes ambiguity from the runtime. 60s is
+// Pro-compatible; the route's wall-clock budget above (52s) leaves
+// 8s of headroom for auth + DB + sendMessage + the final response
+// payload over the wire.
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 interface AskRequestBody {
   communityId?: string;
@@ -66,21 +92,52 @@ function formatRecentContext(events: RecentEventRow[]): string {
   return lines.join('\n');
 }
 
+// Returns the existing insight row that should "stand in" for the
+// answer we're about to record, if one was just created by the
+// agent's SSE listener (or by a previous, faster Ask that raced
+// with us). The dedupe key is (communityId, content) within a
+// recent time window: the Mind's reply is small enough that exact
+// content match is a reliable signal. Returns null when no match
+// exists — caller proceeds to create a fresh row.
+async function findRecentDuplicateInsight(
+  communityId: string,
+  content: string,
+): Promise<{ id: string } | null> {
+  const since = new Date(Date.now() - DEDUPE_WINDOW_MS);
+  return prisma.insight.findFirst({
+    where: {
+      communityId,
+      content,
+      createdAt: { gte: since },
+    },
+    select: { id: true },
+  });
+}
+
 // Build Plan Checkpoint 49 — the reactive round trip (Blueprint Section
 // 6.7): send the creator's question to the Mind, then poll
-// GetMessageHistory for its reply (a short bounded poll, since this
-// route — unlike apps/agent — is a single request/response cycle with
-// no persistent SSE connection of its own; the agent's SSE listener,
-// Checkpoint 47/48, is for autonomous output, not this synchronous path).
+// GetMessageHistory for its reply with a bounded wall-clock deadline.
 //
-// Audit fix: the original implementation sent the bare question, so
-// the Mind only knew about events that had already been batched by the
-// 15-minute digest worker. An Ask landing in the middle of a digest
-// window would miss anything that happened since the last digest
-// (up to 15 minutes of relationship context, including the very
-// question's relevance). The fix: surface the most recent unsent
-// events as a preamble to the question, then mark them sentToMind so
-// the digest worker doesn't double-deliver them.
+// Audit fix (this iteration): the previous version used a fixed
+// 6-iteration × 1-second sleep loop — a budget of ~6 seconds — that
+// timed out well before the Mind's typical reply time on this Mind
+// (measured production latency on a short question: 1–8 minutes,
+// with a 6-poll floor that was never going to catch any reply in
+// time). The new design uses an absolute deadline and checks the
+// conversation history *before* the first sleep, so a reply that
+// arrives during the initial sendMessage round-trip is not lost.
+// The deadline is hard-capped at MAX_WAIT_MS so the route can never
+// turn into an unbounded listener, and a 504 is still returned if
+// the Mind genuinely doesn't respond in time.
+//
+// Audit fix (this iteration): the same Mind response is observed by
+// both this route (which records source='reactive') and the agent's
+// SSE listener (which records source='autonomous'). To prevent
+// duplicate Insight rows, both paths now dedupe on
+// (communityId, content) within DEDUPE_WINDOW_MS — see
+// apps/agent/src/minds/sse-listener.ts for the symmetric check.
+// Both paths also run the same `htmlToText` on the raw messageText
+// before persisting, so the content string actually matches.
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
@@ -131,26 +188,57 @@ export async function POST(request: Request) {
   const beforeCount = (await getMessageHistory(alias)).messages.length;
   await sendMessage(alias, composedQuestion);
 
+  // Bounded polling: check the conversation history immediately
+  // first, then poll every POLL_INTERVAL_MS until the wall-clock
+  // deadline passes or the Mind replies. Exits as soon as we see a
+  // new non-user message — that "exit on first match" is what makes
+  // the route feel snappy on the fast path.
+  const deadline = Date.now() + MAX_WAIT_MS;
   let answer: string | null = null;
-  for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  while (Date.now() < deadline) {
     const history = await getMessageHistory(alias);
-
     if (history.messages.length > beforeCount) {
       const newest = history.messages[history.messages.length - 1];
       if (newest && newest.role !== 'user') {
-        answer = newest.content;
+        // Strip HTML before storing (or before any dedupe lookup)
+        // so the content matches what the SSE listener would have
+        // written for the same reply — see findRecentDuplicateInsight
+        // above for why this matters.
+        answer = htmlToText(newest.content);
         break;
       }
     }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_INTERVAL_MS, remaining)));
   }
 
   if (!answer) {
     // Don't mark the events sentToMind on a timeout — the Mind may
     // still be processing, and if it eventually answers it deserves to
     // have seen the context. The next Ask or the next digest will
-    // re-deliver.
+    // re-deliver. The Mind's late reply will also be picked up by
+    // the agent's SSE listener and recorded as a source='autonomous'
+    // Insight (with the same dedupe window, so it won't collide
+    // with a future Ask that did succeed).
     return NextResponse.json({ error: 'The Mind did not respond in time.' }, { status: 504 });
+  }
+
+  // Dedupe against an existing insight the SSE listener may have
+  // already written for this exact reply (it can race ahead of us
+  // if the Mind replies faster than the first poll). If a recent
+  // row with matching content exists, reuse its id instead of
+  // creating a second row. The mirror check lives in the SSE
+  // listener so whichever path fires second sees the other.
+  const existing = await findRecentDuplicateInsight(community.id, answer);
+  if (existing) {
+    if (recentEvents.length > 0) {
+      await prisma.relationshipEvent.updateMany({
+        where: { id: { in: recentEvents.map((event) => event.id) } },
+        data: { sentToMind: true, sentToMindAt: new Date() },
+      });
+    }
+    return NextResponse.json({ answer, insightId: existing.id });
   }
 
   // Only mark the events sentToMind AFTER a successful reply, so the

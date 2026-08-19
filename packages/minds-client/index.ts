@@ -207,3 +207,34 @@ export async function getMessageHistory(
 
   return { messages, nextAfter };
 }
+
+// The Mind returns assistant text as a small HTML fragment
+// (`<p>…</p>`, occasionally `<ul><li>…</li></ul>` or `<br>`). The
+// dashboard and any in-app insight card render `content` as plain
+// text, so without this conversion the user would see literal
+// `<p>` / `</p>` characters in the UI. Block-level tags get
+// converted to paragraph breaks; inline formatting is stripped; the
+// final whitespace is normalized so the result fits cleanly in the
+// React `<p>` that wraps it.
+//
+// Lives in the shared minds-client so both the Ask route
+// (apps/web/app/api/insights/ask/route.ts) and the agent's SSE
+// listener (apps/agent/src/minds/sse-listener.ts) apply the same
+// transformation. This is the prerequisite for content-based
+// deduplication of insights: if the Ask route stores the raw
+// `messageText` and the SSE listener stores `htmlToText(messageText)`,
+// the same Mind reply would create two rows with different
+// `content` strings and the dedupe check would never match.
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|li|h[1-6]|div)>/gi, '\n\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}

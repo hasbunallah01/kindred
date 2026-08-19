@@ -1,6 +1,16 @@
 import { EventSource } from 'eventsource';
 import { prisma } from '@kindred/db';
-import { sanitizeEnvValue } from '@kindred/minds-client';
+import { sanitizeEnvValue, htmlToText } from '@kindred/minds-client';
+
+// Dedupe window for the symmetric content-match check below. The
+// Ask route in apps/web/app/api/insights/ask/route.ts uses the same
+// window (DEDUPE_WINDOW_MS). 90s is comfortably more than the Ask
+// route's 52s polling budget — any reply observed via the Ask path
+// has either completed and stored its row, or its poll loop has
+// timed out and returned 504 (in which case the SSE listener is
+// the only writer). Either way, 90s is enough headroom that the
+// two writers don't accidentally miss each other.
+const DEDUPE_WINDOW_MS = 90_000;
 
 // Persistent connection to SubscribeEvents on the official Hello Minds
 // Builder API (Blueprint Section 6.4/6.6). Node.js has no native
@@ -139,27 +149,11 @@ interface MindsSseEventPayload {
   };
 }
 
-// The Mind returns assistant text as a small HTML fragment
-// (`<p>…</p>`, occasionally `<ul><li>…</li></ul>` or `<br>`). The
-// dashboard and the in-app insight card render `content` as plain
-// text, so without this conversion the user would see literal
-// `<p>` / `</p>` characters in the UI. Block-level tags get
-// converted to paragraph breaks; inline formatting is stripped; the
-// final whitespace is normalized so the result fits cleanly in the
-// React `<p>` that wraps it.
-function htmlToText(html: string): string {
-  return html
-    .replace(/<\s*br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|li|h[1-6]|div)>/gi, '\n\n')
-    .replace(/<li[^>]*>/gi, '• ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
+// htmlToText is imported from @kindred/minds-client so both the
+// agent's SSE listener and the web app's Ask route apply the same
+// transformation. That parity is what makes the (communityId,
+// content) dedupe check in this file actually match rows written
+// by the Ask route.
 
 export async function handleMindsSseEvent(data: string): Promise<void> {
   let payload: MindsSseEventPayload;
@@ -208,6 +202,29 @@ export async function handleMindsSseEvent(data: string): Promise<void> {
 
   if (!community) {
     console.error(`No Community found for Mind conversation alias "${alias}", skipping.`);
+    return;
+  }
+
+  // Symmetric dedupe against the Ask route. The Ask route records
+  // source='reactive' for the answer it pulls out of
+  // getMessageHistory; this listener records source='autonomous'
+  // for the same reply that arrived via the SSE event stream. If
+  // the Ask path saw the reply first, it will already have stored
+  // an Insight row with this exact `content` (the Ask route also
+  // runs htmlToText now, so the strings actually match). Skip the
+  // create in that case so the same Mind reply never produces two
+  // insights.
+  const since = new Date(Date.now() - DEDUPE_WINDOW_MS);
+  const existing = await prisma.insight.findFirst({
+    where: {
+      communityId: community.id,
+      content,
+      createdAt: { gte: since },
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    console.log(`Skipped duplicate autonomous Insight (matches existing row ${existing.id}).`);
     return;
   }
 
