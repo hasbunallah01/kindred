@@ -4,13 +4,13 @@ import { sanitizeEnvValue, htmlToText } from '@kindred/minds-client';
 
 // Dedupe window for the symmetric content-match check below. The
 // Ask route in apps/web/app/api/insights/ask/route.ts uses the same
-// window (DEDUPE_WINDOW_MS). 90s is comfortably more than the Ask
-// route's 52s polling budget — any reply observed via the Ask path
+// window (DEDUPE_WINDOW_MS). 240s is comfortably more than the Ask
+// route's 170s polling budget — any reply observed via the Ask path
 // has either completed and stored its row, or its poll loop has
 // timed out and returned 504 (in which case the SSE listener is
-// the only writer). Either way, 90s is enough headroom that the
+// the only writer). Either way, 240s is enough headroom that the
 // two writers don't accidentally miss each other.
-const DEDUPE_WINDOW_MS = 90_000;
+const DEDUPE_WINDOW_MS = 240_000;
 
 // Persistent connection to SubscribeEvents on the official Hello Minds
 // Builder API (Blueprint Section 6.4/6.6). Node.js has no native
